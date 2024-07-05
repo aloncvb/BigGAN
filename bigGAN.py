@@ -1,8 +1,7 @@
-"""DCGAN model
-"""
-
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
 
 
 image_size = 28
@@ -10,79 +9,56 @@ nc = 3  # Number of channels in the training images. For color images this is 3
 feature_num = 128  # Size of feature maps in generator/discriminator
 
 
+# Generator
 class Generator(nn.Module):
-    def __init__(self, latent_dim):
+    def __init__(self, latent_dim, img_size, img_channels):
         super(Generator, self).__init__()
-        self.main = nn.Sequential(
-            # Input is Z, going into a convolution
-            nn.ConvTranspose2d(latent_dim, feature_num * 8, 4, 1, 0),
-            nn.BatchNorm2d(feature_num * 8),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(feature_num * 8, feature_num * 4, 4, 2, 1),
-            nn.BatchNorm2d(feature_num * 4),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(feature_num * 4, feature_num * 2, 4, 2, 1),
-            nn.BatchNorm2d(feature_num * 2),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(feature_num * 2, feature_num, 4, 2, 1),
-            nn.BatchNorm2d(feature_num),
-            nn.ReLU(True),
-            nn.ConvTranspose2d(feature_num, nc, 4, 2, 1),
+        self.init_size = img_size // 4
+        self.l1 = nn.Sequential(nn.Linear(latent_dim, 128 * self.init_size**2))
+
+        self.conv_blocks = nn.Sequential(
+            nn.BatchNorm2d(128),
+            nn.Upsample(scale_factor=2),
+            nn.BatchNorm2d(128, 0.8),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Upsample(scale_factor=2),
+            nn.BatchNorm2d(64, 0.8),
+            nn.LeakyReLU(0.2, inplace=True),
             nn.Tanh(),
-            # Output size. (nc) x 64 x 64
         )
 
-    def forward(self, input):
-        output = self.main(input)
-        return output
+    def forward(self, z):
+        out = self.l1(z)
+        out = out.view(out.shape[0], 128, self.init_size, self.init_size)
+        out = self.conv_blocks[0:3](out)
+        out = self.conv_blocks[3:7](out)
+        img = self.conv_blocks[7:](out)
+        return img
 
 
+# Discriminator
 class Discriminator(nn.Module):
-    def __init__(self):
+    def __init__(self, img_size, img_channels):
         super(Discriminator, self).__init__()
-        self.main = nn.Sequential(
-            # Input is (nc) x 128
-            nn.Conv2d(nc, feature_num, 4, 2, 1),
+        self.model = nn.Sequential(
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(feature_num, feature_num * 2, 4, 2, 1),
-            nn.BatchNorm2d(feature_num * 2),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(feature_num * 2, feature_num * 4, 4, 2, 1),
-            nn.BatchNorm2d(feature_num * 4),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(feature_num * 4, feature_num * 8, 4, 2, 1),
-            nn.BatchNorm2d(feature_num * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(feature_num * 8, 1, 4, 1, 0),
-            nn.Sigmoid(),
         )
 
-    def forward(self, input):
-        output = self.main(input)
-        return output
+    def forward(self, img):
+        out = self.model(img)
+        out = out.view(out.shape[0], -1)
+        return out
 
 
-def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find("Conv") != -1:
-        nn.init.normal_(m.weight.data, 0.0, 0.02)
-    elif classname.find("BatchNorm") != -1:
-        nn.init.normal_(m.weight.data, 1.0, 0.02)
-        nn.init.constant_(m.bias.data, 0)
-
-
-class DCGAN:
-    def __init__(self, latent_dim, device):
-        super(DCGAN, self).__init__()
-        self.generator = Generator(latent_dim)
-        self.generator.to(device)
-        self.discriminator = Discriminator()
-        self.discriminator.to(device)
-        self.generator.apply(weights_init)
-        self.discriminator.apply(weights_init)
-        self.device = device
+# Initialize the model
+class BigGAN:
+    def __init__(self, latent_dim, img_size, img_channels, device):
+        self.generator = Generator(latent_dim, img_size, img_channels).to(device)
+        self.discriminator = Discriminator(img_size, img_channels).to(device)
         self.latent_dim = latent_dim
-        self.loss = nn.BCELoss()
+        self.device = device
 
     def train(self):
         self.generator.train()
@@ -92,31 +68,18 @@ class DCGAN:
         self.generator.eval()
         self.discriminator.eval()
 
-    def label(self, x):
-        return self.discriminator(x).squeeze()
-
     def generate_latent(self, batch_size):
-        return torch.randn(batch_size, self.latent_dim, 1, 1, device=self.device)
+        return torch.randn(batch_size, self.latent_dim, device=self.device)
 
     def generate_fake(self, batch_size, noise=None):
         if noise is not None:
-            return self.generator(noise).to(self.device)
-        return self.generator(self.generate_latent(batch_size))
+            return self.generator.forward(noise)
+        return self.generator.forward(self.generate_latent(batch_size))
 
-    def label_real(self, images):
-        return self.label(images)
+    def discriminator_loss(self, real_preds, fake_preds):
+        real_loss = torch.mean(F.relu(1.0 - real_preds))
+        fake_loss = torch.mean(F.relu(1.0 + fake_preds))
+        return real_loss + fake_loss
 
-    def label_fake(self, batch_size):
-        fake = self.generate_fake(batch_size)
-        label = self.label(fake)
-        return label
-
-    def calculate_dicriminator_loss(self, real, fake):
-        soft_real = torch.full(real.size(), 0.9, device=self.device)
-        soft_fake = torch.full(fake.size(), 0.1, device=self.device)
-        check = self.loss(real, soft_real) + self.loss(fake, soft_fake)
-        return check
-
-    def calculate_generator_loss(self, dis_label):
-        soft_real = torch.full(dis_label.size(), 0.9, device=self.device)
-        return self.loss(dis_label, soft_real)
+    def generator_loss(self, fake_preds):
+        return -torch.mean(fake_preds)
