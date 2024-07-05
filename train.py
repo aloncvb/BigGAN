@@ -10,12 +10,13 @@ import torchvision
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.optim import Adam
+from bigGAN import BigGAN
 
 # from dcgan import DCGAN
 
 
 def train(
-    dcgan: DCGAN,
+    dcgan: BigGAN,
     trainloader: DataLoader,
     trainloader1000: DataLoader,
     optimizer_d: Adam,
@@ -54,65 +55,16 @@ def train(
         fake_images = dcgan.generate_fake(batch_size)
         results = dcgan.label(fake_images)
         loss_g = dcgan.calculate_generator_loss(results)
-        if learning_way == "reverse" and epoch > 9:
-            # random number between 1 to 10
-            rand_num = randrange(1, 10)
-            real_mu, real_sigma = get_activation_statistics(
-                real_data[rand_num], device=dcgan.device
-            )
-            fake_images_fid = dcgan.generate_fake(1000)  # 1000 for stable score
-            fake_mu, fake_sigma = get_activation_statistics(
-                fake_images_fid, device=dcgan.device
-            )
-            new_fid = frechet_distance(real_mu, real_sigma, fake_mu, fake_sigma)
-
-            if new_fid.item() < best_fid:
-                best_fid = new_fid.item()
-                best_generator = dcgan.generator.state_dict()
-                dcgan.generator.load_state_dict(best_generator)
-                optimizer_g = torch.optim.Adam(
-                    dcgan.generator.parameters(), lr=0.0002, betas=(0.5, 0.999)
-                )
-                update_flag = False
-        elif learning_way == "rl":
-            real_mu, real_sigma = get_activation_statistics(data, device=dcgan.device)
-            fake_images_fid = dcgan.generate_fake(batch_size)
-            fake_mu, fake_sigma = get_activation_statistics(
-                fake_images_fid, device=dcgan.device
-            )
-            new_fid = frechet_distance(real_mu, real_sigma, fake_mu, fake_sigma)
-            reward = get_reward_loss(old_fid, new_fid)
-            old_fid = new_fid
-            if old_fid != 0:
-                loss_g = loss_g + reward
-
-        elif learning_way == "fid":
-            real_mu, real_sigma = get_activation_statistics(
-                data,
-                device=dcgan.device,
-            )
-            fake_images_fid = dcgan.generate_fake(batch_size)
-            # use fid for better training
-            fake_mu, fake_sigma = get_activation_statistics(
-                fake_images_fid,
-                device=dcgan.device,
-            )
-            fid_loss = frechet_distance(real_mu, real_sigma, fake_mu, fake_sigma)
-            loss_g = 0.7 * loss_g + 0.3 * fid_loss
-
-        if update_flag:
-            loss_g.backward()
-            total_loss_g += loss_g.item()
-            optimizer_g.step()
-        else:
-            update_flag = True
+        loss_g.backward()
+        total_loss_g += loss_g.item()
+        optimizer_g.step()
 
         batch_idx += 1
     return total_loss_d / batch_idx, total_loss_g / batch_idx
 
 
 def test(
-    dcgan: DCGAN,
+    dcgan: BigGAN,
     testloader: DataLoader,
     filename: str,
     epoch: int,
@@ -144,25 +96,6 @@ def test(
             )
             results = dcgan.label(fake_images)
             loss_g = dcgan.calculate_generator_loss(results)
-            if batch_idx % 1 == 0:
-                if learning_way == "fid":
-                    real_mu, real_sigma = get_activation_statistics(
-                        data,
-                        device=dcgan.device,
-                    )
-                    fake_images_fid = dcgan.generate_fake(
-                        batch_size
-                    )  # 1000 for stable score
-                    # use fid for better training
-                    fake_mu, fake_sigma = get_activation_statistics(
-                        fake_images_fid,
-                        device=dcgan.device,
-                    )
-                    fid_loss = frechet_distance(
-                        real_mu, real_sigma, fake_mu, fake_sigma
-                    )
-                    loss_g = 0.7 * loss_g + 0.3 * fid_loss
-
             total_loss_g += loss_g.item()
             batch_idx += 1
         print(
@@ -274,12 +207,14 @@ def main(args):
         "%s_" % args.dataset + "batch%d_" % args.batch_size + "mid%d_" % args.latent_dim
     )
 
-    dcgan = DCGAN(latent_dim=args.latent_dim, device=device)
+    biggan = BigGAN(
+        latent_dim=args.latent_dim, img_size=64, img_channels=3, device=device
+    )
     optimizer_d = torch.optim.Adam(
-        dcgan.discriminator.parameters(), lr=args.lr * 2, betas=(0.5, 0.999)
+        biggan.discriminator.parameters(), lr=args.lr * 2, betas=(0.5, 0.999)
     )
     optimizer_g = torch.optim.Adam(
-        dcgan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)
+        biggan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)
     )
     loss_train_arr_d = []
     loss_test_arr_d = []
@@ -288,7 +223,7 @@ def main(args):
     fixed_noise = torch.randn(testset.__len__(), args.latent_dim, 1, 1, device=device)
     for epoch in range(1, args.epochs + 1):
         loss_train_d, loss_train_g = train(
-            dcgan,
+            biggan,
             trainloader,
             trainloader1000,
             optimizer_d=optimizer_d,
@@ -299,13 +234,13 @@ def main(args):
         loss_train_arr_d.append(loss_train_d)
         loss_train_arr_g.append(loss_train_g)
         loss_test_d, loss_test_g = test(
-            dcgan, testloader, filename, epoch, fixed_noise, args.lw
+            biggan, testloader, filename, epoch, fixed_noise, args.lw
         )
         loss_test_arr_d.append(loss_test_d)
         loss_test_arr_g.append(loss_test_g)
     # Save the model
-    torch.save(dcgan.generator.state_dict(), "generator.pt")
-    torch.save(dcgan.discriminator.state_dict(), "discriminator.pt")
+    torch.save(biggan.generator.state_dict(), "generator.pt")
+    torch.save(biggan.discriminator.state_dict(), "discriminator.pt")
     # create a plot of the loss
     plt.plot(loss_train_arr_d, label="train_d")
     plt.plot(loss_test_arr_d, label="test_d")
