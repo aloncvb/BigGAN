@@ -9,6 +9,44 @@ nc = 3  # Number of channels in the training images. For color images this is 3
 feature_num = 128  # Size of feature maps in generator/discriminator
 
 
+def spectral_norm(module, mode=True):
+    if mode:
+        return nn.utils.spectral_norm(module)
+    return module
+
+
+class SelfAttention(nn.Module):
+    def __init__(self, in_dim):
+        super(SelfAttention, self).__init__()
+        self.chanel_in = in_dim
+        self.query_conv = nn.Conv2d(
+            in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1
+        )
+        self.key_conv = nn.Conv2d(
+            in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1
+        )
+        self.value_conv = nn.Conv2d(
+            in_channels=in_dim, out_channels=in_dim, kernel_size=1
+        )
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        m_batchsize, C, width, height = x.size()
+        proj_query = (
+            self.query_conv(x).view(m_batchsize, -1, width * height).permute(0, 2, 1)
+        )
+        proj_key = self.key_conv(x).view(m_batchsize, -1, width * height)
+        energy = torch.bmm(proj_query, proj_key)
+        attention = F.softmax(energy, dim=-1)
+        proj_value = self.value_conv(x).view(m_batchsize, -1, width * height)
+
+        out = torch.bmm(proj_value, attention.permute(0, 2, 1))
+        out = out.view(m_batchsize, C, width, height)
+
+        out = self.gamma * out + x
+        return out
+
+
 # Generator
 class Generator(nn.Module):
     def __init__(self, latent_dim, img_size, img_channels):
@@ -19,19 +57,27 @@ class Generator(nn.Module):
         self.conv_blocks = nn.Sequential(
             nn.BatchNorm2d(128),
             nn.Upsample(scale_factor=2),
+            spectral_norm(nn.Conv2d(128, 128, 3, stride=1, padding=1)),
             nn.BatchNorm2d(128, 0.8),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Upsample(scale_factor=2),
+            spectral_norm(nn.Conv2d(128, 64, 3, stride=1, padding=1)),
             nn.BatchNorm2d(64, 0.8),
             nn.LeakyReLU(0.2, inplace=True),
+            spectral_norm(nn.Conv2d(64, img_channels, 3, stride=1, padding=1)),
             nn.Tanh(),
         )
+
+        self.attn1 = SelfAttention(128)
+        self.attn2 = SelfAttention(64)
 
     def forward(self, z):
         out = self.l1(z)
         out = out.view(out.shape[0], 128, self.init_size, self.init_size)
         out = self.conv_blocks[0:3](out)
+        out = self.attn1(out)
         out = self.conv_blocks[3:7](out)
+        out = self.attn2(out)
         img = self.conv_blocks[7:](out)
         return img
 
@@ -41,15 +87,23 @@ class Discriminator(nn.Module):
     def __init__(self, img_size, img_channels):
         super(Discriminator, self).__init__()
         self.model = nn.Sequential(
+            spectral_norm(nn.Conv2d(img_channels, 64, 3, 2, 1)),
             nn.LeakyReLU(0.2, inplace=True),
+            spectral_norm(nn.Conv2d(64, 128, 3, 2, 1)),
             nn.LeakyReLU(0.2, inplace=True),
+            SelfAttention(128),
+            spectral_norm(nn.Conv2d(128, 128, 3, 2, 1)),
             nn.LeakyReLU(0.2, inplace=True),
+            SelfAttention(128),
         )
+        ds_size = img_size // 8
+        self.adv_layer = spectral_norm(nn.Linear(128 * ds_size**2, 1))
 
     def forward(self, img):
         out = self.model(img)
         out = out.view(out.shape[0], -1)
-        return out
+        validity = self.adv_layer(out)
+        return validity
 
 
 # Initialize the model
