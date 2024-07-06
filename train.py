@@ -60,7 +60,8 @@ def test(
 ):
     gan.eval()  # set to inference mode
     with torch.no_grad():
-        samples = gan.generate_fake(100, fixed_noise[:100])
+        batch_size = 32
+        samples = gan.generate_fake(batch_size, fixed_noise[:batch_size])
         torchvision.utils.save_image(
             torchvision.utils.make_grid(samples),
             "./samples/" + filename + "epoch%d.png" % epoch,
