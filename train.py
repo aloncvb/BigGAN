@@ -273,4 +273,4 @@ if __name__ == "__main__":
         os.makedirs("samples")
     if not os.path.exists("models"):
         os.makedirs("models")
-    # main(args)
+    main(args)
