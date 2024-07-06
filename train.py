@@ -16,7 +16,6 @@ from bigGAN import BigGAN
 def train(
     gan: BigGAN,
     trainloader: DataLoader,
-    trainloader1000: DataLoader,
     optimizer_d: Adam,
     optimizer_g: Adam,
     epoch: int,
@@ -26,11 +25,6 @@ def train(
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
-    real_data = []
-    for batch, _ in trainloader1000:
-        real_data.append(batch.to(gan.device))
-        if len(real_data) == 10:
-            break
     for batch, _ in trainloader:
         data = batch.to(gan.device)
         optimizer_d.zero_grad()
@@ -126,9 +120,6 @@ def main(args):
         trainloader = torch.utils.data.DataLoader(
             trainset, batch_size=args.batch_size, shuffle=True, num_workers=2
         )
-        trainloader1000 = torch.utils.data.DataLoader(
-            trainset, batch_size=1000, shuffle=True, num_workers=2
-        )
 
         testset = torchvision.datasets.MNIST(
             root="./data/MNIST", train=False, download=True, transform=transform
@@ -156,9 +147,6 @@ def main(args):
         )
         trainloader = torch.utils.data.DataLoader(
             trainset, batch_size=args.batch_size, shuffle=True, num_workers=2
-        )
-        trainloader1000 = torch.utils.data.DataLoader(
-            trainset, batch_size=1000, shuffle=True, num_workers=2
         )
         testset = torchvision.datasets.CIFAR10(
             root="./data/Cifar10", download=True, transform=transform, train=False
@@ -218,7 +206,6 @@ def main(args):
         loss_train_d, loss_train_g = train(
             biggan,
             trainloader,
-            trainloader1000,
             optimizer_d=optimizer_d,
             optimizer_g=optimizer_g,
             epoch=epoch,
