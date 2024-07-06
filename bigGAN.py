@@ -112,6 +112,7 @@ class BigGAN:
         self.generator = Generator(latent_dim, img_size, img_channels).to(device)
         self.discriminator = Discriminator(img_size, img_channels).to(device)
         self.latent_dim = latent_dim
+        self.loss = nn.BCEWithLogitsLoss()
         self.device = device
 
     def train(self):
@@ -137,3 +138,24 @@ class BigGAN:
 
     def generator_loss(self, fake_preds):
         return -torch.mean(fake_preds)
+
+    def label(self, x):
+        return self.discriminator.forward(x).squeeze()
+
+    def label_real(self, images):
+        return self.label(images)
+
+    def label_fake(self, batch_size):
+        fake = self.generate_fake(batch_size)
+        label = self.label(fake)
+        return label
+
+    def calculate_dicriminator_loss(self, real, fake):
+        soft_real = torch.full(real.size(), 0.9, device=self.device)
+        soft_fake = torch.full(fake.size(), 0.1, device=self.device)
+        check = self.loss(real, soft_real) + self.loss(fake, soft_fake)
+        return check
+
+    def calculate_generator_loss(self, dis_label):
+        soft_real = torch.full(dis_label.size(), 0.9, device=self.device)
+        return self.loss(dis_label, soft_real)
