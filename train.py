@@ -12,35 +12,33 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from bigGAN import BigGAN
 
-# from dcgan import DCGAN
-
 
 def train(
-    dcgan: BigGAN,
+    gan: BigGAN,
     trainloader: DataLoader,
     trainloader1000: DataLoader,
     optimizer_d: Adam,
     optimizer_g: Adam,
     epoch: int,
 ):
-    dcgan.train()  # set to training mode
+    gan.train()  # set to training mode
 
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
     real_data = []
     for batch, _ in trainloader1000:
-        real_data.append(batch.to(dcgan.device))
+        real_data.append(batch.to(gan.device))
         if len(real_data) == 10:
             break
     for batch, _ in trainloader:
-        data = batch.to(dcgan.device)
+        data = batch.to(gan.device)
         optimizer_d.zero_grad()
         batch_size = data.size()[0]
         # discriminator train
-        real_label = dcgan.label_real(data)
-        fake_label = dcgan.label_fake(batch_size=batch_size)
-        loss_d = dcgan.calculate_dicriminator_loss(real_label, fake_label)
+        real_label = gan.label_real(data)
+        fake_label = gan.label_fake(batch_size=batch_size)
+        loss_d = gan.calculate_dicriminator_loss(real_label, fake_label)
         loss_d.backward()
 
         total_loss_d += loss_d.item()
@@ -48,9 +46,9 @@ def train(
 
         # generator train
         optimizer_g.zero_grad()
-        fake_images = dcgan.generate_fake(batch_size)
-        results = dcgan.label(fake_images)
-        loss_g = dcgan.calculate_generator_loss(results)
+        fake_images = gan.generate_fake(batch_size)
+        results = gan.label(fake_images)
+        loss_g = gan.calculate_generator_loss(results)
         loss_g.backward()
         total_loss_g += loss_g.item()
         optimizer_g.step()
@@ -60,15 +58,15 @@ def train(
 
 
 def test(
-    dcgan: BigGAN,
+    gan: BigGAN,
     testloader: DataLoader,
     filename: str,
     epoch: int,
     fixed_noise,
 ):
-    dcgan.eval()  # set to inference mode
+    gan.eval()  # set to inference mode
     with torch.no_grad():
-        samples = dcgan.generate_fake(100, fixed_noise[:100])
+        samples = gan.generate_fake(100, fixed_noise[:100])
         torchvision.utils.save_image(
             torchvision.utils.make_grid(samples),
             "./samples/" + filename + "epoch%d.png" % epoch,
@@ -78,19 +76,19 @@ def test(
         total_loss_d = 0
         batch_idx = 0
         for index, (batch, _) in enumerate(testloader):
-            data = batch.to(dcgan.device)
+            data = batch.to(gan.device)
             batch_size = data.size()[0]
-            real_label = dcgan.label_real(data)
-            fake_label = dcgan.label_fake(batch_size=batch_size)
-            loss_d = dcgan.calculate_dicriminator_loss(real_label, fake_label)
+            real_label = gan.label_real(data)
+            fake_label = gan.label_fake(batch_size=batch_size)
+            loss_d = gan.calculate_dicriminator_loss(real_label, fake_label)
             total_loss_d += loss_d.item()
 
-            fake_images = dcgan.generate_fake(
+            fake_images = gan.generate_fake(
                 batch_size,
                 noise=fixed_noise[index * batch_size : (index + 1) * batch_size],
             )
-            results = dcgan.label(fake_images)
-            loss_g = dcgan.calculate_generator_loss(results)
+            results = gan.label(fake_images)
+            loss_g = gan.calculate_generator_loss(results)
             total_loss_g += loss_g.item()
             batch_idx += 1
         print(
@@ -241,7 +239,7 @@ def main(args):
     plt.plot(loss_train_arr_g, label="train_g")
     plt.plot(loss_test_arr_g, label="test_g")
     plt.xlabel("Epoch")
-    plt.ylabel("dcgan loss")
+    plt.ylabel("gan loss")
     plt.legend()
     plt.savefig("loss.png")
 
