@@ -80,7 +80,6 @@ def test(
 
             fake_images = gan.generate_fake(
                 batch_size,
-                noise=fixed_noise[index * batch_size : (index + 1) * batch_size],
             )
             results = gan.label(fake_images)
             loss_g = gan.calculate_generator_loss(results)
