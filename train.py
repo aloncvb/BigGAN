@@ -79,7 +79,7 @@ def test(
             total_loss_d += loss_d.item()
 
             fake_images = gan.generate_fake(
-                batch_size,
+                batch_size, fixed_noise[index * batch_size : (index + 1) * batch_size]
             )
             results = gan.label(fake_images)
             loss_g = gan.calculate_generator_loss(results)
@@ -201,7 +201,7 @@ def main(args):
     loss_test_arr_d = []
     loss_train_arr_g = []
     loss_test_arr_g = []
-    fixed_noise = torch.randn(testset.__len__(), args.latent_dim, 1, 1, device=device)
+    fixed_noise = torch.randn(testset.__len__(), args.latent_dim, device=device)
     for epoch in range(1, args.epochs + 1):
         loss_train_d, loss_train_g = train(
             biggan,
