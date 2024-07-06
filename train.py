@@ -22,17 +22,13 @@ def train(
     optimizer_d: Adam,
     optimizer_g: Adam,
     epoch: int,
-    learning_way: str = "reg",
 ):
     dcgan.train()  # set to training mode
 
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
-    best_fid = float("inf")
-    old_fid = 0
     real_data = []
-    update_flag = True
     for batch, _ in trainloader1000:
         real_data.append(batch.to(dcgan.device))
         if len(real_data) == 10:
@@ -69,7 +65,6 @@ def test(
     filename: str,
     epoch: int,
     fixed_noise,
-    learning_way: str = "reg",
 ):
     dcgan.eval()  # set to inference mode
     with torch.no_grad():
@@ -229,12 +224,11 @@ def main(args):
             optimizer_d=optimizer_d,
             optimizer_g=optimizer_g,
             epoch=epoch,
-            learning_way=args.lw,
         )
         loss_train_arr_d.append(loss_train_d)
         loss_train_arr_g.append(loss_train_g)
         loss_test_d, loss_test_g = test(
-            biggan, testloader, filename, epoch, fixed_noise, args.lw
+            biggan, testloader, filename, epoch, fixed_noise
         )
         loss_test_arr_d.append(loss_test_d)
         loss_test_arr_g.append(loss_test_g)
@@ -271,8 +265,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--lr", help="initial learning rate.", type=float, default=0.0002
     )
-
-    parser.add_argument("--lw", help="way of learning.", type=str, default="reg")
 
     args = parser.parse_args()
 
