@@ -170,7 +170,7 @@ class BigGAN:
         return -torch.mean(fake_preds)
 
     def label(self, x):
-        return self.discriminator.forward(x).squeeze()
+        return self.discriminator.forward(x)
 
     def label_real(self, images):
         return self.label(images)
