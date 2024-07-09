@@ -177,7 +177,7 @@ def main(args):
     elif args.dataset == "celeba":
         transform = transforms.Compose(
             [
-                transforms.Resize((args.img_size, args.img_size)),
+                transforms.Resize((128, 128)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
