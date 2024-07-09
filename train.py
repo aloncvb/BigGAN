@@ -230,6 +230,9 @@ def main(args):
             plt.ylabel("gan loss")
             plt.legend()
             plt.savefig("loss.png")
+            # reset the plot completely
+            plt.clf()
+            plt.cla()
 
 
 if __name__ == "__main__":
