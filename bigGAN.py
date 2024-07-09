@@ -150,7 +150,7 @@ class BigGAN:
         label = self.label(fake)
         return label
 
-    def calculate_dicriminator_loss(self, real, fake):
+    def calculate_discriminator_loss(self, real, fake):
         soft_real = torch.full(real.size(), 1.0, device=self.device)
         soft_fake = torch.full(fake.size(), 0.0, device=self.device)
         check = self.loss(real, soft_real) + self.loss(fake, soft_fake)

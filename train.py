@@ -32,7 +32,7 @@ def train(
         # discriminator train
         real_label = gan.label_real(data)
         fake_label = gan.label_fake(batch_size=batch_size)
-        loss_d = gan.calculate_dicriminator_loss(real_label, fake_label)
+        loss_d = gan.calculate_discriminator_loss(real_label, fake_label)
         loss_d.backward()
 
         total_loss_d += loss_d.item()
@@ -75,7 +75,7 @@ def test(
             batch_size = data.size()[0]
             real_label = gan.label_real(data)
             fake_label = gan.label_fake(batch_size=batch_size)
-            loss_d = gan.calculate_dicriminator_loss(real_label, fake_label)
+            loss_d = gan.calculate_discriminator_loss(real_label, fake_label)
             total_loss_d += loss_d.item()
 
             fake_images = gan.generate_fake(
@@ -192,7 +192,7 @@ def main(args):
         latent_dim=args.latent_dim, img_size=64, img_channels=3, device=device
     )
     optimizer_d = torch.optim.Adam(
-        biggan.discriminator.parameters(), lr=args.lr * 2, betas=(0.5, 0.999)
+        biggan.discriminator.parameters(), lr=args.lr, betas=(0.5, 0.999)
     )
     optimizer_g = torch.optim.Adam(
         biggan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)
