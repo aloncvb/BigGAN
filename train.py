@@ -217,18 +217,19 @@ def main(args):
         )
         loss_test_arr_d.append(loss_test_d)
         loss_test_arr_g.append(loss_test_g)
-    # Save the model
-    torch.save(biggan.generator.state_dict(), "generator.pt")
-    torch.save(biggan.discriminator.state_dict(), "discriminator.pt")
-    # create a plot of the loss
-    plt.plot(loss_train_arr_d, label="train_d")
-    plt.plot(loss_test_arr_d, label="test_d")
-    plt.plot(loss_train_arr_g, label="train_g")
-    plt.plot(loss_test_arr_g, label="test_g")
-    plt.xlabel("Epoch")
-    plt.ylabel("gan loss")
-    plt.legend()
-    plt.savefig("loss.png")
+        if epoch % 10 == 0 and epoch != 0:
+            # Save the model
+            torch.save(biggan.generator.state_dict(), "generator.pt")
+            torch.save(biggan.discriminator.state_dict(), "discriminator.pt")
+            # create a plot of the loss
+            plt.plot(loss_train_arr_d, label="train_d")
+            plt.plot(loss_test_arr_d, label="test_d")
+            plt.plot(loss_train_arr_g, label="train_g")
+            plt.plot(loss_test_arr_g, label="test_g")
+            plt.xlabel("Epoch")
+            plt.ylabel("gan loss")
+            plt.legend()
+            plt.savefig("loss.png")
 
 
 if __name__ == "__main__":
