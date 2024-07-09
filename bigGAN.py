@@ -120,9 +120,11 @@ class Discriminator(nn.Module):
             SelfAttention(512),
         )
 
-        # The height and width of downsampled image
-        ds_size = img_size // 16
-        self.adv_layer = spectral_norm(nn.Linear(512 * ds_size**2, 1))
+        # Calculate the output size of feature maps
+        self.output_size = img_size // 16
+        self.adv_layer = spectral_norm(
+            nn.Linear(512 * self.output_size * self.output_size, 1)
+        )
 
     def forward(self, img):
         out = self.model(img)
