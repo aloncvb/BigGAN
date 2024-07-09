@@ -124,7 +124,7 @@ class BigGAN:
         self.discriminator.eval()
 
     def label_smoothing(self, tensor, amount=0.1):
-        return tensor * (1 - amount) + amount / tensor.size(1)
+        return tensor * (1 - amount) + amount * 0.5
 
     def generate_latent(self, batch_size):
         return torch.randn(batch_size, self.latent_dim, device=self.device)
