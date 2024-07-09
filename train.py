@@ -8,6 +8,12 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision
 from torchvision import transforms
+from torchvision.transforms import (
+    RandomApply,
+    RandomCrop,
+    RandomHorizontalFlip,
+    ColorJitter,
+)
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from bigGAN import BigGAN
@@ -27,27 +33,32 @@ def train(
     batch_idx = 0
     for batch, _ in trainloader:
         data = batch.to(gan.device)
-        optimizer_d.zero_grad()
         batch_size = data.size()[0]
-        # discriminator train
+
+        # Discriminator training
+        optimizer_d.zero_grad()
         real_label = gan.label_real(data)
         fake_label = gan.label_fake(batch_size=batch_size)
         loss_d = gan.calculate_discriminator_loss(real_label, fake_label)
         loss_d.backward()
+        torch.nn.utils.clip_grad_norm_(gan.discriminator.parameters(), max_norm=1.0)
 
-        total_loss_d += loss_d.item()
         optimizer_d.step()
 
-        # generator train
+        # Generator training
         optimizer_g.zero_grad()
         fake_images = gan.generate_fake(batch_size)
         results = gan.label(fake_images)
         loss_g = gan.calculate_generator_loss(results)
         loss_g.backward()
-        total_loss_g += loss_g.item()
+        torch.nn.utils.clip_grad_norm_(gan.generator.parameters(), max_norm=1.0)
+
         optimizer_g.step()
 
+        total_loss_d += loss_d.item()
+        total_loss_g += loss_g.item()
         batch_idx += 1
+
     return total_loss_d / batch_idx, total_loss_g / batch_idx
 
 
@@ -131,8 +142,17 @@ def main(args):
         transform = transforms.Compose(
             [
                 transforms.Resize(
-                    (64),
-                    interpolation=transforms.InterpolationMode.BICUBIC,  # size_that_worked = 64
+                    (64, 64), interpolation=transforms.InterpolationMode.BICUBIC
+                ),
+                RandomCrop(64, padding=4),
+                RandomHorizontalFlip(),
+                RandomApply(
+                    [
+                        ColorJitter(
+                            brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+                        )
+                    ],
+                    p=0.5,
                 ),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
@@ -192,11 +212,13 @@ def main(args):
         latent_dim=args.latent_dim, img_size=64, img_channels=3, device=device
     )
     optimizer_d = torch.optim.Adam(
-        biggan.discriminator.parameters(), lr=args.lr, betas=(0.5, 0.999)
+        biggan.discriminator.parameters(), lr=args.lr * 4, betas=(0.5, 0.999)
     )
     optimizer_g = torch.optim.Adam(
         biggan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)
     )
+    scheduler_d = torch.optim.lr_scheduler.StepLR(optimizer_d, step_size=30, gamma=0.5)
+    scheduler_g = torch.optim.lr_scheduler.StepLR(optimizer_g, step_size=30, gamma=0.5)
     loss_train_arr_d = []
     loss_test_arr_d = []
     loss_train_arr_g = []
@@ -217,6 +239,11 @@ def main(args):
         )
         loss_test_arr_d.append(loss_test_d)
         loss_test_arr_g.append(loss_test_g)
+
+        # Step the learning rate schedulers
+        scheduler_d.step()
+        scheduler_g.step()
+
         if epoch % 10 == 0 and epoch != 0:
             # Save the model
             torch.save(biggan.generator.state_dict(), "generator.pt")

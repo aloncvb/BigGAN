@@ -123,6 +123,9 @@ class BigGAN:
         self.generator.eval()
         self.discriminator.eval()
 
+    def label_smoothing(self, tensor, amount=0.1):
+        return tensor * (1 - amount) + amount / tensor.size(1)
+
     def generate_latent(self, batch_size):
         return torch.randn(batch_size, self.latent_dim, device=self.device)
 
@@ -151,8 +154,9 @@ class BigGAN:
         return label
 
     def calculate_discriminator_loss(self, real, fake):
-        soft_real = torch.full(real.size(), 1.0, device=self.device)
-        soft_fake = torch.full(fake.size(), 0.0, device=self.device)
+        # Apply label smoothing
+        soft_real = self.label_smoothing(torch.ones_like(real))
+        soft_fake = self.label_smoothing(torch.zeros_like(fake))
         check = self.loss(real, soft_real) + self.loss(fake, soft_fake)
         return check
 
