@@ -177,11 +177,12 @@ def main(args):
     elif args.dataset == "celeba":
         transform = transforms.Compose(
             [
+                transforms.Resize((args.img_size, args.img_size)),
+                transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
         )
-
         trainset = torchvision.datasets.CelebA(
             root="./data/CelebA",
             split="train",
@@ -209,7 +210,7 @@ def main(args):
     )
 
     biggan = BigGAN(
-        latent_dim=args.latent_dim, img_size=64, img_channels=3, device=device
+        latent_dim=args.latent_dim, img_size=128, img_channels=3, device=device
     )
     optimizer_d = torch.optim.Adam(
         biggan.discriminator.parameters(), lr=args.lr * 4, betas=(0.5, 0.999)
