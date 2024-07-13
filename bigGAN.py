@@ -130,19 +130,21 @@ class Discriminator(nn.Module):
         super().__init__()
 
         def discriminator_block(in_filters, out_filters, stride=2):
-            return [
+            return nn.Sequential(
                 spectral_norm(
                     nn.Conv2d(in_filters, out_filters, 3, stride=stride, padding=1)
                 ),
                 nn.LeakyReLU(0.2, inplace=True),
-            ]
+            )
 
-        self.model = nn.Sequential(
-            *discriminator_block(channels, 64),
-            *discriminator_block(64, 128),
-            *discriminator_block(128, 256),
-            SelfAttention(256),
-            *discriminator_block(256, 512, stride=1),
+        self.blocks = nn.ModuleList(
+            [
+                discriminator_block(channels, 64),
+                discriminator_block(64, 128),
+                discriminator_block(128, 256),
+                SelfAttention(256),
+                discriminator_block(256, 512, stride=1),
+            ]
         )
 
         self.output_size = 4
@@ -156,14 +158,29 @@ class Discriminator(nn.Module):
         )  # +64 for minibatch disc
         self.embed = spectral_norm(nn.Embedding(num_classes, self.output_dim + 64))
 
-    def forward(self, img, labels):
-        out = self.model(img)
+    def forward(self, img, labels, get_features=False):
+        features = []
+        out = img
+        for block in self.blocks:
+            out = block(out)
+            features.append(out)
+
         out = out.view(out.shape[0], -1)
         out = self.minibatch_disc(out)
+        features.append(out)
+
         output = self.linear(out)
         embed = self.embed(labels)
         prod = (out * embed).sum(1).unsqueeze(1)
-        return output + prod
+
+        if get_features:
+            return output + prod, features
+        else:
+            return output + prod
+
+    def get_features(self, img, labels):
+        _, features = self.forward(img, labels, get_features=True)
+        return features
 
 
 class BigGAN:
