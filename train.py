@@ -214,9 +214,9 @@ def main(args):
         device=device,
     )
     optimizer_d = Adam(
-        biggan.discriminator.parameters(), lr=args.lr_d, betas=(0.0, 0.999)
+        biggan.discriminator.parameters(), lr=args.lr_d, betas=(0.5, 0.999)
     )
-    optimizer_g = Adam(biggan.generator.parameters(), lr=args.lr_g, betas=(0.0, 0.999))
+    optimizer_g = Adam(biggan.generator.parameters(), lr=args.lr_g, betas=(0.5, 0.999))
     scheduler_d = CosineAnnealingLR(optimizer_d, T_max=args.epochs)
     scheduler_g = CosineAnnealingLR(optimizer_g, T_max=args.epochs)
     scaler = GradScaler()
