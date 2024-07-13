@@ -226,3 +226,9 @@ class BigGAN:
         grad = grad.view(grad.size(0), -1)
         penalty = ((grad.norm(2, dim=1) - 1) ** 2).mean()
         return penalty
+
+    def hinge_loss_d(self, real_pred, fake_pred):
+        return (F.relu(1 - real_pred) + F.relu(1 + fake_pred)).mean()
+
+    def hinge_loss_g(self, fake_pred):
+        return -fake_pred.mean()
