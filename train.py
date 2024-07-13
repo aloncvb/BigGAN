@@ -280,7 +280,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sample_size", help="number of images to generate.", type=int, default=64
     )
-    parser.add_argument("--latent-dim", help="latent dimension", type=int, default=100)
+    parser.add_argument("--latent-dim", help="latent dimension", type=int, default=128)
     parser.add_argument(
         "--lr-d", help="discriminator learning rate.", type=float, default=4e-4
     )
