@@ -127,8 +127,6 @@ def main(args):
                     (32),
                     interpolation=transforms.InterpolationMode.BICUBIC,  # size_that_worked = 64
                 ),
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomCrop(32, padding=4),
                 transforms.Grayscale(num_output_channels=3),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
