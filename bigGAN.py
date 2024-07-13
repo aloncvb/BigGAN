@@ -52,7 +52,7 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.img_size = img_size
         self.init_size = img_size // 8
-        self.l1 = nn.Sequential(nn.Linear(latent_dim, 128 * self.init_size**2))
+        self.l1 = nn.Sequential(nn.Linear(latent_dim, 256 * self.init_size**2))
 
         self.conv_blocks = nn.ModuleList(
             [
@@ -76,8 +76,8 @@ class Generator(nn.Module):
             ]
         )
 
-        self.attn1 = SelfAttention(256)
-        self.attn2 = SelfAttention(128)
+        self.attn1 = SelfAttention(128)
+        self.attn2 = SelfAttention(64)
 
     def forward(self, z):
         out = self.l1(z)
