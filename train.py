@@ -14,13 +14,6 @@ from bigGAN import BigGAN
 import torch.nn.functional as F
 
 
-def feature_matching_loss(real_features, fake_features):
-    loss = 0
-    for real_feat, fake_feat in zip(real_features, fake_features):
-        loss += F.mse_loss(fake_feat.mean(0), real_feat.mean(0))
-    return loss
-
-
 def orthogonal_regularization(model):
     loss = 0
     for name, param in model.named_parameters():
@@ -29,6 +22,13 @@ def orthogonal_regularization(model):
             sym = torch.mm(mat, mat.t())
             sym -= torch.eye(mat.size(0)).to(mat.device)
             loss += sym.abs().sum()
+    return loss
+
+
+def feature_matching_loss(real_features, fake_features):
+    loss = 0
+    for real_feat, fake_feat in zip(real_features, fake_features):
+        loss += F.mse_loss(fake_feat.mean(0), real_feat.mean(0))
     return loss
 
 
@@ -58,14 +58,18 @@ def train(
         # Discriminator training
         with autocast():
             optimizer_d.zero_grad()
-            real_pred = gan.discriminate(noisy_batch, labels)  # Use noisy batch
+            real_pred, real_features = gan.discriminator(
+                noisy_batch, labels, get_features=True
+            )
             fake_images, fake_labels = gan.generate_fake(batch_size)
 
             # Add noise to fake images
             noise = torch.randn_like(fake_images) * noise_factor
             noisy_fake_images = fake_images + noise
 
-            fake_pred = gan.discriminate(noisy_fake_images.detach(), fake_labels)
+            fake_pred, _ = gan.discriminator(
+                noisy_fake_images.detach(), fake_labels, get_features=True
+            )
 
             loss_d = F.binary_cross_entropy_with_logits(
                 real_pred, torch.ones_like(real_pred)
@@ -86,20 +90,22 @@ def train(
         # Generator training
         with autocast():
             optimizer_g.zero_grad()
-
-            real_features = gan.discriminator.get_features(noisy_batch)
-            fake_features = gan.discriminator.get_features(fake_images)
-            fm_loss = feature_matching_loss(real_features, fake_features)
-            loss_g += fm_loss * 0.1  # Adjust the weight as needed
-
             fake_images, fake_labels = gan.generate_fake(batch_size)
-            fake_pred = gan.discriminate(fake_images, fake_labels)
+            fake_pred, fake_features = gan.discriminator(
+                fake_images, fake_labels, get_features=True
+            )
 
             loss_g = F.binary_cross_entropy_with_logits(
                 fake_pred, torch.ones_like(fake_pred)
             )
+
+            # Feature matching loss
+            fm_loss = feature_matching_loss(real_features, fake_features)
+            loss_g += fm_loss * 0.1  # Adjust this weight as needed
+
+            # Orthogonal regularization
             ortho_reg = orthogonal_regularization(gan.generator)
-            loss_g += ortho_reg * 1e-4  # Adjust the weight as needed
+            loss_g += ortho_reg * 1e-4  # Adjust this weight as needed
 
         scaler.scale(loss_g).backward()
         scaler.unscale_(optimizer_g)
