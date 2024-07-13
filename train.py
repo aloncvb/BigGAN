@@ -11,25 +11,6 @@ from torch.optim import Adam
 from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from bigGAN import BigGAN
-import torch.nn.functional as F
-
-
-def orthogonal_regularization(model):
-    loss = 0
-    for name, param in model.named_parameters():
-        if "weight" in name:
-            mat = param.view(param.size(0), -1)
-            sym = torch.mm(mat, mat.t())
-            sym -= torch.eye(mat.size(0)).to(mat.device)
-            loss += sym.abs().sum()
-    return loss
-
-
-def feature_matching_loss(real_features, fake_features):
-    loss = 0
-    for real_feat, fake_feat in zip(real_features, fake_features):
-        loss += F.mse_loss(fake_feat.mean(0), real_feat.mean(0))
-    return loss
 
 
 def train(
@@ -38,77 +19,50 @@ def train(
     optimizer_d: Adam,
     optimizer_g: Adam,
     scaler: GradScaler,
-    max_grad_norm=1.0,
-    noise_factor=0.05,
 ):
     gan.train()
+    max_grad_norm = 1.0
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
-
     for batch, labels in trainloader:
         batch = batch.to(gan.device)
         batch_size = batch.size()[0]
         labels = labels.to(gan.device)
 
-        # Add noise to real images
-        noise = torch.randn_like(batch) * noise_factor
-        noisy_batch = batch + noise
+        # Discriminator training
+        for _ in range(1):
+            with autocast():
+                optimizer_d.zero_grad()
+                fake_images, fake_labels = gan.generate_fake(batch_size)
 
+                # Revert to BCE loss
+                loss_d = gan.calculate_discriminator_loss(
+                    batch, labels, fake_images, fake_labels
+                )
+
+                # Add gradient penalty
+                gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
+                loss_d += 10 * gp  # lambda = 10
+
+            scaler.scale(loss_d).backward()
+            torch.nn.utils.clip_grad_norm_(
+                gan.discriminator.parameters(), max_grad_norm
+            )
+            scaler.step(optimizer_d)
+            scaler.update()
+
+        # Generator training
         with autocast():
-            # Generate fake images
+            optimizer_g.zero_grad()
             fake_images, fake_labels = gan.generate_fake(batch_size)
 
-            # Add noise to fake images
-            noise = torch.randn_like(fake_images) * noise_factor
-            noisy_fake_images = fake_images + noise
+            # Revert to BCE loss
+            loss_g = gan.calculate_generator_loss(fake_images, fake_labels)
 
-            # Discriminator forward pass for real and fake images
-            real_pred, real_features = gan.discriminator(
-                noisy_batch, labels, get_features=True
-            )
-            fake_pred, fake_features = gan.discriminator(
-                noisy_fake_images, fake_labels, get_features=True
-            )
-
-            # Discriminator loss
-            loss_d = F.binary_cross_entropy_with_logits(
-                real_pred, torch.ones_like(real_pred)
-            ) + F.binary_cross_entropy_with_logits(
-                fake_pred, torch.zeros_like(fake_pred)
-            )
-
-            # Gradient penalty
-            gp = gan.gradient_penalty(noisy_batch, noisy_fake_images.detach(), labels)
-            loss_d += 0.1 * gp
-
-            # Generator loss
-            loss_g = F.binary_cross_entropy_with_logits(
-                fake_pred, torch.ones_like(fake_pred)
-            )
-
-            # Feature matching loss
-            fm_loss = feature_matching_loss(real_features, fake_features)
-            loss_g += fm_loss * 0.1  # Adjust this weight as needed
-
-            # Orthogonal regularization
-            ortho_reg = orthogonal_regularization(gan.generator)
-            loss_g += ortho_reg * 1e-4  # Adjust this weight as needed
-
-        # Discriminator backward and optimize
-        optimizer_d.zero_grad()
-        scaler.scale(loss_d).backward(retain_graph=True)
-        scaler.unscale_(optimizer_d)
-        torch.nn.utils.clip_grad_norm_(gan.discriminator.parameters(), max_grad_norm)
-        scaler.step(optimizer_d)
-
-        # Generator backward and optimize
-        optimizer_g.zero_grad()
         scaler.scale(loss_g).backward()
-        scaler.unscale_(optimizer_g)
         torch.nn.utils.clip_grad_norm_(gan.generator.parameters(), max_grad_norm)
         scaler.step(optimizer_g)
-
         scaler.update()
 
         total_loss_d += loss_d.item()

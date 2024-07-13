@@ -101,86 +101,39 @@ class Generator(nn.Module):
         return torch.tanh(out)
 
 
-class MinibatchDiscrimination(nn.Module):
-    def __init__(self, in_features, out_features, kernel_dims):
-        super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.kernel_dims = kernel_dims
-
-        self.T = nn.Parameter(torch.Tensor(in_features, out_features, kernel_dims))
-        nn.init.normal_(self.T, 0, 1)
-
-    def forward(self, x):
-        matrices = x.mm(self.T.view(self.in_features, -1))
-        matrices = matrices.view(-1, self.out_features, self.kernel_dims)
-
-        M = matrices.unsqueeze(0)  # 1xNxBxC
-        M_T = M.permute(1, 0, 2, 3)  # Nx1xBxC
-        norm = torch.abs(M - M_T).sum(3)  # NxNxB
-        expnorm = torch.exp(-norm)
-        o_b = expnorm.sum(0) - 1  # NxB, subtract self distance
-
-        x = torch.cat([x, o_b], 1)
-        return x
-
-
 class Discriminator(nn.Module):
     def __init__(self, num_classes, img_size, channels):
         super().__init__()
 
         def discriminator_block(in_filters, out_filters, stride=2):
-            return nn.Sequential(
+            return [
                 spectral_norm(
                     nn.Conv2d(in_filters, out_filters, 3, stride=stride, padding=1)
                 ),
                 nn.LeakyReLU(0.2, inplace=True),
-            )
-
-        self.blocks = nn.ModuleList(
-            [
-                discriminator_block(channels, 64),
-                discriminator_block(64, 128),
-                discriminator_block(128, 256),
-                SelfAttention(256),
-                discriminator_block(256, 512, stride=1),
             ]
+
+        self.model = nn.Sequential(
+            *discriminator_block(channels, 64),
+            *discriminator_block(64, 128),
+            *discriminator_block(128, 256),
+            SelfAttention(256),
+            *discriminator_block(256, 512, stride=1),
         )
 
         self.output_size = 4
         self.output_dim = 512 * self.output_size * self.output_size
 
-        # Add minibatch discrimination
-        self.minibatch_disc = MinibatchDiscrimination(self.output_dim, 64, 16)
+        self.linear = spectral_norm(nn.Linear(self.output_dim, 1))
+        self.embed = spectral_norm(nn.Embedding(num_classes, self.output_dim))
 
-        self.linear = spectral_norm(
-            nn.Linear(self.output_dim + 64, 1)
-        )  # +64 for minibatch disc
-        self.embed = spectral_norm(nn.Embedding(num_classes, self.output_dim + 64))
-
-    def forward(self, img, labels, get_features=False):
-        features = []
-        out = img
-        for block in self.blocks:
-            out = block(out)
-            features.append(out)
-
+    def forward(self, img, labels):
+        out = self.model(img)
         out = out.view(out.shape[0], -1)
-        out = self.minibatch_disc(out)
-        features.append(out)
-
         output = self.linear(out)
         embed = self.embed(labels)
         prod = (out * embed).sum(1).unsqueeze(1)
-
-        if get_features:
-            return output + prod, features
-        else:
-            return output + prod
-
-    def get_features(self, img, labels):
-        _, features = self.forward(img, labels, get_features=True)
-        return features
+        return output + prod
 
 
 class BigGAN:
