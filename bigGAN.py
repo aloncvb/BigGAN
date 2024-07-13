@@ -82,25 +82,24 @@ class Discriminator(nn.Module):
     def __init__(self, num_classes, img_size, channels):
         super().__init__()
 
-        def discriminator_block(in_filters, out_filters):
+        def discriminator_block(in_filters, out_filters, stride=2):
             return [
                 spectral_norm(
-                    nn.Conv2d(in_filters, out_filters, 3, stride=2, padding=1)
+                    nn.Conv2d(in_filters, out_filters, 3, stride=stride, padding=1)
                 ),
                 nn.LeakyReLU(0.2, inplace=True),
             ]
 
         self.model = nn.Sequential(
-            *discriminator_block(channels, 64),
-            *discriminator_block(64, 128),
-            *discriminator_block(128, 256),
-            *discriminator_block(256, 512),
-            *discriminator_block(512, 1024)
+            *discriminator_block(channels, 64),  # 32x32 -> 16x16
+            *discriminator_block(64, 128),  # 16x16 -> 8x8
+            *discriminator_block(128, 256),  # 8x8 -> 4x4
+            *discriminator_block(256, 512, stride=1),  # 4x4 -> 4x4
         )
 
         # Calculate the output size of the convolutional layers
-        self.output_size = img_size // 32
-        self.output_dim = 1024 * self.output_size * self.output_size
+        self.output_size = 4  # Final spatial dimensions
+        self.output_dim = 512 * self.output_size * self.output_size
 
         self.linear = spectral_norm(nn.Linear(self.output_dim, 1))
         self.embed = spectral_norm(nn.Embedding(num_classes, self.output_dim))
