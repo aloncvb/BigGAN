@@ -54,16 +54,13 @@ class Generator(nn.Module):
         super().__init__()
         self.latent_dim = latent_dim
         self.num_classes = num_classes
-        self.img_size = img_size
-        self.channels = channels
 
         self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 512))
         self.res_blocks = nn.ModuleList(
             [
-                ResBlock(512, 512, num_classes, upsample=True),
-                ResBlock(512, 256, num_classes, upsample=True),
-                ResBlock(256, 128, num_classes, upsample=True),
-                ResBlock(128, 64, num_classes, upsample=True),
+                ResBlock(512, 256, num_classes, upsample=True),  # 4x4 -> 8x8
+                ResBlock(256, 128, num_classes, upsample=True),  # 8x8 -> 16x16
+                ResBlock(128, 64, num_classes, upsample=True),  # 16x16 -> 32x32
             ]
         )
         self.final_bn = ConditionalBatchNorm2d(64, num_classes)
