@@ -55,22 +55,23 @@ def train(
         noise = torch.randn_like(batch) * noise_factor
         noisy_batch = batch + noise
 
-        # Discriminator training
         with autocast():
-            optimizer_d.zero_grad()
-            real_pred, real_features = gan.discriminator(
-                noisy_batch, labels, get_features=True
-            )
+            # Generate fake images
             fake_images, fake_labels = gan.generate_fake(batch_size)
 
             # Add noise to fake images
             noise = torch.randn_like(fake_images) * noise_factor
             noisy_fake_images = fake_images + noise
 
-            fake_pred, _ = gan.discriminator(
-                noisy_fake_images.detach(), fake_labels, get_features=True
+            # Discriminator forward pass for real and fake images
+            real_pred, real_features = gan.discriminator(
+                noisy_batch, labels, get_features=True
+            )
+            fake_pred, fake_features = gan.discriminator(
+                noisy_fake_images, fake_labels, get_features=True
             )
 
+            # Discriminator loss
             loss_d = F.binary_cross_entropy_with_logits(
                 real_pred, torch.ones_like(real_pred)
             ) + F.binary_cross_entropy_with_logits(
@@ -81,20 +82,7 @@ def train(
             gp = gan.gradient_penalty(noisy_batch, noisy_fake_images.detach(), labels)
             loss_d += 0.1 * gp
 
-        scaler.scale(loss_d).backward()
-        scaler.unscale_(optimizer_d)
-        torch.nn.utils.clip_grad_norm_(gan.discriminator.parameters(), max_grad_norm)
-        scaler.step(optimizer_d)
-        scaler.update()
-
-        # Generator training
-        with autocast():
-            optimizer_g.zero_grad()
-            fake_images, fake_labels = gan.generate_fake(batch_size)
-            fake_pred, fake_features = gan.discriminator(
-                fake_images, fake_labels, get_features=True
-            )
-
+            # Generator loss
             loss_g = F.binary_cross_entropy_with_logits(
                 fake_pred, torch.ones_like(fake_pred)
             )
@@ -107,10 +95,20 @@ def train(
             ortho_reg = orthogonal_regularization(gan.generator)
             loss_g += ortho_reg * 1e-4  # Adjust this weight as needed
 
+        # Discriminator backward and optimize
+        optimizer_d.zero_grad()
+        scaler.scale(loss_d).backward(retain_graph=True)
+        scaler.unscale_(optimizer_d)
+        torch.nn.utils.clip_grad_norm_(gan.discriminator.parameters(), max_grad_norm)
+        scaler.step(optimizer_d)
+
+        # Generator backward and optimize
+        optimizer_g.zero_grad()
         scaler.scale(loss_g).backward()
         scaler.unscale_(optimizer_g)
         torch.nn.utils.clip_grad_norm_(gan.generator.parameters(), max_grad_norm)
         scaler.step(optimizer_g)
+
         scaler.update()
 
         total_loss_d += loss_d.item()
