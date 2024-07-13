@@ -6,10 +6,10 @@ import torch
 import torchvision
 from torchvision import transforms
 from torchvision.transforms import (
-    RandomApply,
+    ToTensor,
     RandomCrop,
     RandomHorizontalFlip,
-    ColorJitter,
+    Normalize,
 )
 from torch.utils.data import DataLoader
 from torch.optim import Adam
@@ -31,13 +31,13 @@ def train(
     batch_idx = 0
     for batch, labels in trainloader:
         batch = batch.to(gan.device)
-        batch_size = batch.size()[0]
         labels = labels.to(gan.device)
+        batch_size = batch.size(0)
 
-        # Discriminator training
-        for _ in range(2):  # Train discriminator more
+        # Train discriminator
+        for _ in range(2):
+            optimizer_d.zero_grad()
             with autocast():
-                optimizer_d.zero_grad()
                 real_pred = gan.discriminate(batch, labels)
                 fake_images, fake_labels = gan.generate_fake(batch_size)
                 fake_pred = gan.discriminate(fake_images.detach(), fake_labels)
@@ -49,7 +49,6 @@ def train(
 
                 # Add orthogonal regularization
                 loss_d += 1e-4 * gan.orthogonal_regularization(gan.discriminator)
-
             scaler.scale(loss_d).backward()
             scaler.step(optimizer_d)
 
@@ -71,8 +70,7 @@ def train(
         total_loss_d += loss_d.item()
         total_loss_g += loss_g.item()
         batch_idx += 1
-
-    return total_loss_d / batch_idx, total_loss_g / batch_idx
+        return total_loss_d / batch_idx, total_loss_g / batch_idx
 
 
 def test(
@@ -148,21 +146,12 @@ def main(args):
     elif args.dataset == "cifar":
         transform = transforms.Compose(
             [
-                RandomCrop(32, padding=4),
                 RandomHorizontalFlip(),
-                RandomApply(
-                    [
-                        ColorJitter(
-                            brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
-                        )
-                    ],
-                    p=0.5,
-                ),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
+                RandomCrop(32, padding=4),
+                ToTensor(),
+                Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
         )
-
         trainset = torchvision.datasets.CIFAR10(
             root="./data/Cifar10",
             train=True,
@@ -220,13 +209,13 @@ def main(args):
         img_channels=3,
         device=device,
     )
-    optimizer_d = Adam(
-        biggan.discriminator.parameters(), lr=args.lr_d, betas=(0.0, 0.999)
-    )
-    optimizer_g = Adam(biggan.generator.parameters(), lr=args.lr_g, betas=(0.0, 0.999))
-    scheduler_d = CosineAnnealingLR(optimizer_d, T_max=args.epochs)
-    scheduler_g = CosineAnnealingLR(optimizer_g, T_max=args.epochs)
+    optimizer_g = Adam(biggan.generator.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    optimizer_d = Adam(biggan.discriminator.parameters(), lr=0.0002, betas=(0.5, 0.999))
     scaler = GradScaler()
+
+    # Learning rate scheduler
+    scheduler_g = CosineAnnealingLR(optimizer_g, T_max=args.epochs)
+    scheduler_d = CosineAnnealingLR(optimizer_d, T_max=args.epochs)
 
     loss_train_arr_d = []
     loss_test_arr_d = []
