@@ -101,28 +101,18 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, img_size, img_channels):
         super(Discriminator, self).__init__()
-
-        def discriminator_block(in_filters, out_filters, bn=True):
-            block = [
-                spectral_norm(nn.Conv2d(in_filters, out_filters, 3, 2, 1)),
-                nn.LeakyReLU(0.2, inplace=True),
-            ]
-            if bn:
-                block.append(nn.BatchNorm2d(out_filters, 0.8))
-            return block
-
         self.model = nn.Sequential(
-            *discriminator_block(img_channels, 64, bn=False),
-            *discriminator_block(64, 128),
+            spectral_norm(nn.Conv2d(img_channels, 64, 3, 2, 1)),
+            nn.LeakyReLU(0.2, inplace=True),
+            spectral_norm(nn.Conv2d(64, 128, 3, 2, 1)),
+            nn.LeakyReLU(0.2, inplace=True),
             SelfAttention(128),
-            *discriminator_block(128, 256),
-            *discriminator_block(256, 512),
-            SelfAttention(512),
+            spectral_norm(nn.Conv2d(128, 128, 3, 2, 1)),
+            nn.LeakyReLU(0.2, inplace=True),
+            SelfAttention(128),
         )
-
-        # The height and width of downsampled image
-        ds_size = img_size // 16
-        self.adv_layer = spectral_norm(nn.Linear(512 * ds_size**2, 1))
+        ds_size = img_size // 8
+        self.adv_layer = spectral_norm(nn.Linear(128 * ds_size**2, 1))
 
     def forward(self, img):
         out = self.model(img)
