@@ -50,7 +50,7 @@ def train(
                 # Add orthogonal regularization
                 loss_d += 1e-4 * gan.orthogonal_regularization(gan.discriminator)
             scaler.scale(loss_d).backward()
-            scaler.step(optimizer_d)
+        scaler.step(optimizer_d)
 
         # Generator training
         with autocast():
