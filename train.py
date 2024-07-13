@@ -42,8 +42,8 @@ def train(
                 )
 
                 # Add gradient penalty
-                gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
-                loss_d += 10 * gp  # lambda = 10
+                # gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
+                # loss_d += 10 * gp  # lambda = 10
 
             scaler.scale(loss_d).backward()
             torch.nn.utils.clip_grad_norm_(
