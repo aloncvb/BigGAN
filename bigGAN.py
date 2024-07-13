@@ -157,7 +157,7 @@ class BigGAN:
             labels = torch.randint(
                 0, self.num_classes, (batch_size,), device=self.device
             )
-
+        z = self.truncate_latent(z)  # Apply truncation trick
         return self.generator.forward(z, labels), labels
 
     def discriminate(self, x, labels):
@@ -170,6 +170,9 @@ class BigGAN:
     def eval(self):
         self.generator.eval()
         self.discriminator.eval()
+
+    def truncate_latent(self, z):
+        return 1.0 * z
 
     def soft_labels(self, tensor, smoothing=0.1):
         return tensor * (1 - smoothing) + smoothing * 0.5
@@ -223,9 +226,3 @@ class BigGAN:
         grad = grad.view(grad.size(0), -1)
         penalty = ((grad.norm(2, dim=1) - 1) ** 2).mean()
         return penalty
-
-    def hinge_loss_d(self, real_pred, fake_pred):
-        return (F.relu(1 - real_pred) + F.relu(1 + fake_pred)).mean()
-
-    def hinge_loss_g(self, fake_pred):
-        return -fake_pred.mean()
