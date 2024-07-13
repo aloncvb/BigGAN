@@ -31,28 +31,25 @@ def train(
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
-    for batch, _ in trainloader:
+    for batch, labels in trainloader:
         data = batch.to(gan.device)
         batch_size = data.size()[0]
+        labels = labels.to(gan.device)
 
         # Discriminator training
         optimizer_d.zero_grad()
-        real_label = gan.label_real(data)
-        fake_label = gan.label_fake(batch_size=batch_size)
-        loss_d = gan.calculate_discriminator_loss(real_label, fake_label)
+        fake_images, fake_labels = gan.generate_fake(batch_size)
+        loss_d = gan.calculate_discriminator_loss(
+            batch, labels, fake_images.detach(), fake_labels
+        )
         loss_d.backward()
-        torch.nn.utils.clip_grad_norm_(gan.discriminator.parameters(), max_norm=1.0)
-
         optimizer_d.step()
 
         # Generator training
         optimizer_g.zero_grad()
-        fake_images = gan.generate_fake(batch_size)
-        results = gan.label(fake_images)
-        loss_g = gan.calculate_generator_loss(results)
+        fake_images, fake_labels = gan.generate_fake(batch_size)
+        loss_g = gan.calculate_generator_loss(fake_images, fake_labels)
         loss_g.backward()
-        torch.nn.utils.clip_grad_norm_(gan.generator.parameters(), max_norm=1.0)
-
         optimizer_g.step()
 
         total_loss_d += loss_d.item()
@@ -68,43 +65,39 @@ def test(
     filename: str,
     epoch: int,
     fixed_noise,
+    fixed_labels,
 ):
-    gan.eval()  # set to inference mode
+    gan.eval()
     with torch.no_grad():
-        batch_size = 32
-        samples = gan.generate_fake(batch_size)
+        samples = gan.generator(fixed_noise, fixed_labels)
         torchvision.utils.save_image(
             torchvision.utils.make_grid(samples),
-            "./samples/" + filename + "epoch%d.png" % epoch,
+            "./samples/" + filename + f"epoch{epoch}.png",
         )
 
         total_loss_g = 0
         total_loss_d = 0
         batch_idx = 0
-        for index, (batch, _) in enumerate(testloader):
-            data = batch.to(gan.device)
-            batch_size = data.size()[0]
-            real_label = gan.label_real(data)
-            fake_label = gan.label_fake(batch_size=batch_size)
-            loss_d = gan.calculate_discriminator_loss(real_label, fake_label)
-            total_loss_d += loss_d.item()
+        for batch, labels in testloader:
+            batch = batch.to(gan.device)
+            labels = labels.to(gan.device)
+            batch_size = batch.size(0)
 
-            fake_images = gan.generate_fake(
-                batch_size, fixed_noise[index * batch_size : (index + 1) * batch_size]
+            fake_images, fake_labels = gan.generate_fake(batch_size)
+            loss_d = gan.calculate_discriminator_loss(
+                batch, labels, fake_images, fake_labels
             )
-            results = gan.label(fake_images)
-            loss_g = gan.calculate_generator_loss(results)
+            loss_g = gan.calculate_generator_loss(fake_images, fake_labels)
+
+            total_loss_d += loss_d.item()
             total_loss_g += loss_g.item()
             batch_idx += 1
+
         print(
-            "Epoch: {} Test set: Average loss_d: {:.4f}".format(
-                epoch, total_loss_d / batch_idx
-            )
+            f"Epoch: {epoch} Test set: Average loss_d: {total_loss_d / batch_idx:.4f}"
         )
         print(
-            "Epoch: {} Test set: Average loss_g: {:.4f}".format(
-                epoch, total_loss_g / batch_idx
-            )
+            f"Epoch: {epoch} Test set: Average loss_g: {total_loss_g / batch_idx:.4f}"
         )
     return total_loss_d / batch_idx, total_loss_g / batch_idx
 
@@ -214,7 +207,7 @@ def main(args):
         device=device,
     )
     optimizer_d = torch.optim.Adam(
-        biggan.discriminator.parameters(), lr=args.lr * 4, betas=(0.5, 0.999)
+        biggan.discriminator.parameters(), lr=args.lr * 3, betas=(0.5, 0.999)
     )
     optimizer_g = torch.optim.Adam(
         biggan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)
@@ -225,7 +218,11 @@ def main(args):
     loss_test_arr_d = []
     loss_train_arr_g = []
     loss_test_arr_g = []
-    fixed_noise = torch.randn(testset.__len__(), args.latent_dim, device=device)
+
+    fixed_noise = torch.randn(64, args.latent_dim, device=device)
+    fixed_labels = (
+        torch.arange(10, device=device).repeat(6).long()
+    )  # 0-9 repeated 6 times, plus 4 random
     for epoch in range(1, args.epochs + 1):
         loss_train_d, loss_train_g = train(
             biggan,
@@ -237,7 +234,7 @@ def main(args):
         loss_train_arr_d.append(loss_train_d)
         loss_train_arr_g.append(loss_train_g)
         loss_test_d, loss_test_g = test(
-            biggan, testloader, filename, epoch, fixed_noise
+            biggan, testloader, filename, epoch, fixed_noise, fixed_labels
         )
         loss_test_arr_d.append(loss_test_d)
         loss_test_arr_g.append(loss_test_g)
