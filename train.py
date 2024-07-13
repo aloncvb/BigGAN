@@ -5,12 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision
 from torchvision import transforms
-from torchvision.transforms import (
-    RandomApply,
-    RandomCrop,
-    RandomHorizontalFlip,
-    ColorJitter,
-)
+from torchvision.transforms import RandomCrop, RandomHorizontalFlip, ToTensor, Normalize
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.cuda.amp import GradScaler, autocast
@@ -26,6 +21,7 @@ def train(
     scaler: GradScaler,
 ):
     gan.train()
+    max_grad_norm = 1.0
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
@@ -35,42 +31,48 @@ def train(
         labels = labels.to(gan.device)
 
         # Discriminator training
-        for _ in range(2):  # Train discriminator more
+        for _ in range(1):
             with autocast():
                 optimizer_d.zero_grad()
-                real_pred = gan.discriminate(batch, labels)
                 fake_images, fake_labels = gan.generate_fake(batch_size)
-                fake_pred = gan.discriminate(fake_images.detach(), fake_labels)
-                loss_d = gan.hinge_loss_d(real_pred, fake_pred)
+
+                # Revert to BCE loss
+                loss_d = gan.calculate_discriminator_loss(
+                    batch, labels, fake_images, fake_labels
+                )
 
                 # Add gradient penalty
                 gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
                 loss_d += 10 * gp  # lambda = 10
 
-                # Add orthogonal regularization
-                loss_d += 1e-4 * gan.orthogonal_regularization(gan.discriminator)
-
             scaler.scale(loss_d).backward()
-        scaler.step(optimizer_d)
+            torch.nn.utils.clip_grad_norm_(
+                gan.discriminator.parameters(), max_grad_norm
+            )
+            scaler.step(optimizer_d)
+            scaler.update()
 
         # Generator training
         with autocast():
             optimizer_g.zero_grad()
             fake_images, fake_labels = gan.generate_fake(batch_size)
-            fake_pred = gan.discriminate(fake_images, fake_labels)
-            loss_g = gan.hinge_loss_g(fake_pred)
 
-            # Add orthogonal regularization
-            loss_g += 1e-4 * gan.orthogonal_regularization(gan.generator)
+            # Revert to BCE loss
+            loss_g = gan.calculate_generator_loss(fake_images, fake_labels)
 
         scaler.scale(loss_g).backward()
+        torch.nn.utils.clip_grad_norm_(gan.generator.parameters(), max_grad_norm)
         scaler.step(optimizer_g)
-
         scaler.update()
 
         total_loss_d += loss_d.item()
         total_loss_g += loss_g.item()
         batch_idx += 1
+
+        if batch_idx % 100 == 0:
+            print(
+                f"Batch {batch_idx}: D loss: {loss_d.item():.4f}, G loss: {loss_g.item():.4f}"
+            )
 
     return total_loss_d / batch_idx, total_loss_g / batch_idx
 
@@ -148,13 +150,12 @@ def main(args):
     elif args.dataset == "cifar":
         transform = transforms.Compose(
             [
-                RandomCrop(32, padding=4),
                 RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
+                RandomCrop(32, padding=4),
+                ToTensor(),
+                Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
         )
-
         trainset = torchvision.datasets.CIFAR10(
             root="./data/Cifar10",
             train=True,
@@ -282,7 +283,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--latent-dim", help="latent dimension", type=int, default=128)
     parser.add_argument(
-        "--lr-d", help="discriminator learning rate.", type=float, default=4e-4
+        "--lr-d", help="discriminator learning rate.", type=float, default=3e-4
     )
     parser.add_argument(
         "--lr-g", help="generator learning rate.", type=float, default=1e-4
