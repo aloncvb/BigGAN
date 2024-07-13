@@ -210,6 +210,7 @@ def main(args):
 
     biggan = BigGAN(
         latent_dim=args.latent_dim,
+        shared_dim=64,
         num_classes=10,
         img_size=32,
         img_channels=3,
@@ -287,7 +288,7 @@ if __name__ == "__main__":
         "--sample_size", help="number of images to generate.", type=int, default=64
     )
 
-    parser.add_argument("--latent-dim", help=".", type=int, default=100)
+    parser.add_argument("--latent-dim", help=".", type=int, default=128)
     parser.add_argument("--lr", help="initial learning rate.", type=float, default=1e-4)
 
     args = parser.parse_args()

@@ -50,16 +50,19 @@ class ResBlock(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, latent_dim, num_classes, img_size, channels):
+    def __init__(self, latent_dim, shared_dim, num_classes, img_size, channels):
         super().__init__()
         self.latent_dim = latent_dim
+        self.shared_dim = shared_dim
         self.num_classes = num_classes
         self.img_size = img_size
         self.channels = channels
 
-        self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 256))
+        self.shared_embed = spectral_norm(nn.Embedding(num_classes, shared_dim))
+        self.linear = spectral_norm(nn.Linear(latent_dim + shared_dim, 4 * 4 * 256))
         self.res_blocks = nn.ModuleList(
             [
+                ResBlock(256, 256, num_classes, upsample=True),
                 ResBlock(256, 256, num_classes, upsample=True),
                 ResBlock(256, 128, num_classes, upsample=True),
                 ResBlock(128, 64, num_classes, upsample=True),
@@ -69,7 +72,9 @@ class Generator(nn.Module):
         self.final_conv = spectral_norm(nn.Conv2d(64, channels, 3, padding=1))
 
     def forward(self, z, y):
-        out = self.linear(z).view(-1, 256, 4, 4)
+        shared = self.shared_embed(y)
+        out = torch.cat((z, shared), dim=1)
+        out = self.linear(out).view(-1, 256, 4, 4)
         for block in self.res_blocks:
             out = block(out, y)
         out = F.relu(self.final_bn(out, y))
@@ -93,12 +98,13 @@ class Discriminator(nn.Module):
             *discriminator_block(channels, 64),
             *discriminator_block(64, 128),
             *discriminator_block(128, 256),
-            *discriminator_block(256, 512)
+            *discriminator_block(256, 512),
+            *discriminator_block(512, 1024)
         )
 
-        self.linear = spectral_norm(nn.Linear(512 * (img_size // 16) ** 2, 1))
+        self.linear = spectral_norm(nn.Linear(1024 * (img_size // 32) ** 2, 1))
         self.embed = spectral_norm(
-            nn.Embedding(num_classes, 512 * (img_size // 16) ** 2)
+            nn.Embedding(num_classes, 1024 * (img_size // 32) ** 2)
         )
 
     def forward(self, img, labels):
@@ -111,16 +117,19 @@ class Discriminator(nn.Module):
 
 
 class BigGAN:
-    def __init__(self, latent_dim, num_classes, img_size, img_channels, device):
-        self.generator = Generator(latent_dim, num_classes, img_size, img_channels).to(
-            device
-        )
+    def __init__(
+        self, latent_dim, shared_dim, num_classes, img_size, img_channels, device
+    ):
+        self.generator = Generator(
+            latent_dim, shared_dim, num_classes, img_size, img_channels
+        ).to(device)
         self.discriminator = Discriminator(num_classes, img_size, img_channels).to(
             device
         )
         self.latent_dim = latent_dim
         self.num_classes = num_classes
         self.device = device
+        self.truncation = 1.0  # Truncation trick parameter
 
     def generate_latent(self, batch_size):
         return torch.randn(batch_size, self.latent_dim, device=self.device)
@@ -131,6 +140,7 @@ class BigGAN:
             labels = torch.randint(
                 0, self.num_classes, (batch_size,), device=self.device
             )
+        z = self.truncate_latent(z)  # Apply truncation trick
         return self.generator.forward(z, labels), labels
 
     def discriminate(self, x, labels):
@@ -143,6 +153,9 @@ class BigGAN:
     def eval(self):
         self.generator.eval()
         self.discriminator.eval()
+
+    def truncate_latent(self, z):
+        return self.truncation * z
 
     def soft_labels(self, tensor, smoothing=0.1):
         return tensor * (1 - smoothing) + smoothing * 0.5
