@@ -104,7 +104,7 @@ class Discriminator(nn.Module):
 
         self.linear = spectral_norm(nn.Linear(1024 * (img_size // 32) ** 2, 1))
         self.embed = spectral_norm(
-            nn.Embedding(num_classes, 1024 * (img_size // 64) ** 2)
+            nn.Embedding(num_classes, 1024 * (img_size // 32) ** 2)
         )
 
     def forward(self, img, labels):
