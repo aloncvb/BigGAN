@@ -171,9 +171,9 @@ class BigGAN:
         self.generator.eval()
         self.discriminator.eval()
 
-    def truncate_latent(self, z, threshold=0.8):
+    def truncate_latent(self, z, threshold=0.5):
         norm = torch.norm(z, dim=1, keepdim=True)
-        return z * torch.clamp(threshold / norm, max=1.0)
+        return z * (norm < threshold).float()
 
     def soft_labels(self, tensor, smoothing=0.1):
         return tensor * (1 - smoothing) + smoothing * 0.5
