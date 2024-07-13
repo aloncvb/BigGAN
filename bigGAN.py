@@ -144,17 +144,28 @@ class BigGAN:
         self.generator.eval()
         self.discriminator.eval()
 
+    def soft_labels(self, tensor, smoothing=0.1):
+        return tensor * (1 - smoothing) + smoothing * 0.5
+
     def calculate_discriminator_loss(
         self, real_images, real_labels, fake_images, fake_labels
     ):
         real_output = self.discriminate(real_images, real_labels)
         fake_output = self.discriminate(fake_images, fake_labels)
 
-        real_loss = F.relu(1.0 - real_output).mean()
-        fake_loss = F.relu(1.0 + fake_output).mean()
+        # Soft labels for real and fake
+        real_labels_smooth = self.soft_labels(torch.ones_like(real_output))
+        fake_labels_smooth = self.soft_labels(torch.zeros_like(fake_output))
+
+        real_loss = F.binary_cross_entropy_with_logits(real_output, real_labels_smooth)
+        fake_loss = F.binary_cross_entropy_with_logits(fake_output, fake_labels_smooth)
 
         return real_loss + fake_loss
 
     def calculate_generator_loss(self, fake_images, fake_labels):
         fake_output = self.discriminate(fake_images, fake_labels)
-        return -fake_output.mean()
+
+        # Use soft labels for generator as well
+        real_labels_smooth = self.soft_labels(torch.ones_like(fake_output))
+
+        return F.binary_cross_entropy_with_logits(fake_output, real_labels_smooth)
