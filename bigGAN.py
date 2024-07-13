@@ -101,6 +101,30 @@ class Generator(nn.Module):
         return torch.tanh(out)
 
 
+class MinibatchDiscrimination(nn.Module):
+    def __init__(self, in_features, out_features, kernel_dims):
+        super().__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.kernel_dims = kernel_dims
+
+        self.T = nn.Parameter(torch.Tensor(in_features, out_features, kernel_dims))
+        nn.init.normal_(self.T, 0, 1)
+
+    def forward(self, x):
+        matrices = x.mm(self.T.view(self.in_features, -1))
+        matrices = matrices.view(-1, self.out_features, self.kernel_dims)
+
+        M = matrices.unsqueeze(0)  # 1xNxBxC
+        M_T = M.permute(1, 0, 2, 3)  # Nx1xBxC
+        norm = torch.abs(M - M_T).sum(3)  # NxNxB
+        expnorm = torch.exp(-norm)
+        o_b = expnorm.sum(0) - 1  # NxB, subtract self distance
+
+        x = torch.cat([x, o_b], 1)
+        return x
+
+
 class Discriminator(nn.Module):
     def __init__(self, num_classes, img_size, channels):
         super().__init__()
@@ -124,12 +148,18 @@ class Discriminator(nn.Module):
         self.output_size = 4
         self.output_dim = 512 * self.output_size * self.output_size
 
-        self.linear = spectral_norm(nn.Linear(self.output_dim, 1))
-        self.embed = spectral_norm(nn.Embedding(num_classes, self.output_dim))
+        # Add minibatch discrimination
+        self.minibatch_disc = MinibatchDiscrimination(self.output_dim, 64, 16)
+
+        self.linear = spectral_norm(
+            nn.Linear(self.output_dim + 64, 1)
+        )  # +64 for minibatch disc
+        self.embed = spectral_norm(nn.Embedding(num_classes, self.output_dim + 64))
 
     def forward(self, img, labels):
         out = self.model(img)
         out = out.view(out.shape[0], -1)
+        out = self.minibatch_disc(out)
         output = self.linear(out)
         embed = self.embed(labels)
         prod = (out * embed).sum(1).unsqueeze(1)
