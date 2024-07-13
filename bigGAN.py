@@ -76,8 +76,8 @@ class Generator(nn.Module):
             ]
         )
 
-        self.attn1 = SelfAttention(128)
-        self.attn2 = SelfAttention(64)
+        self.attn1 = SelfAttention(256)
+        self.attn2 = SelfAttention(128)
 
     def forward(self, z):
         out = self.l1(z)
