@@ -185,7 +185,7 @@ class BigGAN:
         interpolated = (alpha * real_images + (1 - alpha) * fake_images).requires_grad_(
             True
         )
-        d_interpolated, _ = self.discriminate(interpolated, labels)
+        d_interpolated = self.discriminate(interpolated, labels)
         grad = torch.autograd.grad(
             outputs=d_interpolated,
             inputs=interpolated,
