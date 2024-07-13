@@ -4,9 +4,9 @@ import torch.nn.functional as F
 import numpy as np
 
 
-# image_size = 28
-# nc = 3  # Number of channels in the training images. For color images this is 3
-# feature_num = 128  # Size of feature maps in generator/discriminator
+image_size = 28
+nc = 3  # Number of channels in the training images. For color images this is 3
+feature_num = 128  # Size of feature maps in generator/discriminator
 
 
 def spectral_norm(module, mode=True):
@@ -51,21 +51,15 @@ class Generator(nn.Module):
     def __init__(self, latent_dim, img_size, img_channels):
         super(Generator, self).__init__()
         self.img_size = img_size
-        self.init_size = img_size // 16  # Start from 8x8
-        self.l1 = nn.Sequential(nn.Linear(latent_dim, 512 * self.init_size**2))
+        self.init_size = img_size // 8
+        self.l1 = nn.Sequential(nn.Linear(latent_dim, 128 * self.init_size**2))
 
         self.conv_blocks = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.BatchNorm2d(512),
+                    nn.BatchNorm2d(128),
                     nn.Upsample(scale_factor=2),
-                    spectral_norm(nn.Conv2d(512, 256, 3, stride=1, padding=1)),
-                    nn.BatchNorm2d(256, 0.8),
-                    nn.LeakyReLU(0.2, inplace=True),
-                ),
-                nn.Sequential(
-                    nn.Upsample(scale_factor=2),
-                    spectral_norm(nn.Conv2d(256, 128, 3, stride=1, padding=1)),
+                    spectral_norm(nn.Conv2d(128, 128, 3, stride=1, padding=1)),
                     nn.BatchNorm2d(128, 0.8),
                     nn.LeakyReLU(0.2, inplace=True),
                 ),
@@ -76,19 +70,18 @@ class Generator(nn.Module):
                     nn.LeakyReLU(0.2, inplace=True),
                 ),
                 nn.Sequential(
-                    nn.Upsample(scale_factor=2),
                     spectral_norm(nn.Conv2d(64, img_channels, 3, stride=1, padding=1)),
                     nn.Tanh(),
                 ),
             ]
         )
 
-        self.attn1 = SelfAttention(256)
-        self.attn2 = SelfAttention(128)
+        self.attn1 = SelfAttention(128)
+        self.attn2 = SelfAttention(64)
 
     def forward(self, z):
         out = self.l1(z)
-        out = out.view(out.shape[0], 512, self.init_size, self.init_size)
+        out = out.view(out.shape[0], 128, self.init_size, self.init_size)
 
         for i, block in enumerate(self.conv_blocks):
             out = block(out)
@@ -96,7 +89,11 @@ class Generator(nn.Module):
                 out = self.attn1(out)
             elif i == 1:
                 out = self.attn2(out)
-        # print(f"Generator output shape: {out.shape}")
+
+            if (
+                out.size(2) == self.img_size
+            ):  # If we've reached the target size, stop upsampling
+                break
 
         return out
 
@@ -123,17 +120,13 @@ class Discriminator(nn.Module):
             SelfAttention(512),
         )
 
-        # Calculate the output size of feature maps
-        self.output_size = img_size // 16
-        self.adv_layer = spectral_norm(
-            nn.Linear(512 * self.output_size * self.output_size, 1)
-        )
+        # The height and width of downsampled image
+        ds_size = img_size // 16
+        self.adv_layer = spectral_norm(nn.Linear(512 * ds_size**2, 1))
 
     def forward(self, img):
-        # print(f"Discriminator input shape: {img.shape}")
         out = self.model(img)
         out = out.view(out.shape[0], -1)
-        # print(f"Discriminator flattened shape: {out.shape}")
         validity = self.adv_layer(out)
         return validity
 
@@ -175,7 +168,7 @@ class BigGAN:
         return -torch.mean(fake_preds)
 
     def label(self, x):
-        return self.discriminator.forward(x)
+        return self.discriminator.forward(x).squeeze()
 
     def label_real(self, images):
         return self.label(images)
