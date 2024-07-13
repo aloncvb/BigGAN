@@ -50,30 +50,21 @@ class SelfAttention(nn.Module):
 class Generator(nn.Module):
     def __init__(self, latent_dim, img_size, img_channels):
         super(Generator, self).__init__()
-        self.img_size = img_size
-        self.init_size = img_size // 8
+        self.init_size = img_size // 4
         self.l1 = nn.Sequential(nn.Linear(latent_dim, 128 * self.init_size**2))
 
-        self.conv_blocks = nn.ModuleList(
-            [
-                nn.Sequential(
-                    nn.BatchNorm2d(128),
-                    nn.Upsample(scale_factor=2),
-                    spectral_norm(nn.Conv2d(128, 128, 3, stride=1, padding=1)),
-                    nn.BatchNorm2d(128, 0.8),
-                    nn.LeakyReLU(0.2, inplace=True),
-                ),
-                nn.Sequential(
-                    nn.Upsample(scale_factor=2),
-                    spectral_norm(nn.Conv2d(128, 64, 3, stride=1, padding=1)),
-                    nn.BatchNorm2d(64, 0.8),
-                    nn.LeakyReLU(0.2, inplace=True),
-                ),
-                nn.Sequential(
-                    spectral_norm(nn.Conv2d(64, img_channels, 3, stride=1, padding=1)),
-                    nn.Tanh(),
-                ),
-            ]
+        self.conv_blocks = nn.Sequential(
+            nn.BatchNorm2d(128),
+            nn.Upsample(scale_factor=2),
+            spectral_norm(nn.Conv2d(128, 128, 3, stride=1, padding=1)),
+            nn.BatchNorm2d(128, 0.8),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Upsample(scale_factor=2),
+            spectral_norm(nn.Conv2d(128, 64, 3, stride=1, padding=1)),
+            nn.BatchNorm2d(64, 0.8),
+            nn.LeakyReLU(0.2, inplace=True),
+            spectral_norm(nn.Conv2d(64, img_channels, 3, stride=1, padding=1)),
+            nn.Tanh(),
         )
 
         self.attn1 = SelfAttention(128)
@@ -82,22 +73,15 @@ class Generator(nn.Module):
     def forward(self, z):
         out = self.l1(z)
         out = out.view(out.shape[0], 128, self.init_size, self.init_size)
-
-        for i, block in enumerate(self.conv_blocks):
-            out = block(out)
-            if i == 0:
-                out = self.attn1(out)
-            elif i == 1:
-                out = self.attn2(out)
-
-            if (
-                out.size(2) == self.img_size
-            ):  # If we've reached the target size, stop upsampling
-                break
-
-        return out
+        out = self.conv_blocks[0:3](out)
+        out = self.attn1(out)
+        out = self.conv_blocks[3:7](out)
+        out = self.attn2(out)
+        img = self.conv_blocks[7:](out)
+        return img
 
 
+# Discriminator
 class Discriminator(nn.Module):
     def __init__(self, img_size, img_channels):
         super(Discriminator, self).__init__()
