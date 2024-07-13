@@ -57,7 +57,7 @@ class Generator(nn.Module):
         self.img_size = img_size
         self.channels = channels
 
-        self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 256))
+        self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 512))
         self.res_blocks = nn.ModuleList(
             [
                 ResBlock(512, 512, num_classes, upsample=True),
@@ -70,7 +70,7 @@ class Generator(nn.Module):
         self.final_conv = spectral_norm(nn.Conv2d(64, channels, 3, padding=1))
 
     def forward(self, z, y):
-        out = self.linear(z).view(-1, 256, 4, 4)
+        out = self.linear(z).view(-1, 512, 4, 4)
         for block in self.res_blocks:
             out = block(out, y)
         out = F.relu(self.final_bn(out, y))
@@ -95,12 +95,12 @@ class Discriminator(nn.Module):
             *discriminator_block(64, 128),
             *discriminator_block(128, 256),
             *discriminator_block(256, 512),
-            *discriminator_block(512, 1024),
+            *discriminator_block(512, 1024)
         )
 
-        self.linear = spectral_norm(nn.Linear(512 * (img_size // 16) ** 2, 1))
+        self.linear = spectral_norm(nn.Linear(1024 * (img_size // 32) ** 2, 1))
         self.embed = spectral_norm(
-            nn.Embedding(num_classes, 512 * (img_size // 16) ** 2)
+            nn.Embedding(num_classes, 1024 * (img_size // 32) ** 2)
         )
 
     def forward(self, img, labels):
