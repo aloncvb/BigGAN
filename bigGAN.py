@@ -4,112 +4,116 @@ import torch.nn.functional as F
 import numpy as np
 
 
-image_size = 28
-nc = 3  # Number of channels in the training images. For color images this is 3
-feature_num = 128  # Size of feature maps in generator/discriminator
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
-def spectral_norm(module, mode=True):
-    if mode:
-        return nn.utils.spectral_norm(module)
-    return module
+def spectral_norm(module):
+    return nn.utils.spectral_norm(module)
 
 
-class SelfAttention(nn.Module):
-    def __init__(self, in_dim):
-        super(SelfAttention, self).__init__()
-        self.chanel_in = in_dim
-        self.query_conv = nn.Conv2d(
-            in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1
+class ResBlock(nn.Module):
+    def __init__(self, in_channel, out_channel, upsample=False):
+        super().__init__()
+        self.conv1 = spectral_norm(nn.Conv2d(in_channel, out_channel, 3, padding=1))
+        self.conv2 = spectral_norm(nn.Conv2d(out_channel, out_channel, 3, padding=1))
+        self.bypass_conv = spectral_norm(
+            nn.Conv2d(in_channel, out_channel, 1, padding=0)
         )
-        self.key_conv = nn.Conv2d(
-            in_channels=in_dim, out_channels=in_dim // 8, kernel_size=1
-        )
-        self.value_conv = nn.Conv2d(
-            in_channels=in_dim, out_channels=in_dim, kernel_size=1
-        )
-        self.gamma = nn.Parameter(torch.zeros(1))
+        self.bn1 = nn.BatchNorm2d(in_channel)
+        self.bn2 = nn.BatchNorm2d(out_channel)
+        self.upsample = upsample
 
     def forward(self, x):
-        m_batchsize, C, width, height = x.size()
-        proj_query = (
-            self.query_conv(x).view(m_batchsize, -1, width * height).permute(0, 2, 1)
-        )
-        proj_key = self.key_conv(x).view(m_batchsize, -1, width * height)
-        energy = torch.bmm(proj_query, proj_key)
-        attention = F.softmax(energy, dim=-1)
-        proj_value = self.value_conv(x).view(m_batchsize, -1, width * height)
-
-        out = torch.bmm(proj_value, attention.permute(0, 2, 1))
-        out = out.view(m_batchsize, C, width, height)
-
-        out = self.gamma * out + x
-        return out
+        residual = x
+        out = F.relu(self.bn1(x))
+        if self.upsample:
+            out = F.interpolate(out, scale_factor=2, mode="nearest")
+            residual = F.interpolate(residual, scale_factor=2, mode="nearest")
+        out = self.conv1(out)
+        out = self.conv2(F.relu(self.bn2(out)))
+        if self.upsample:
+            residual = self.bypass_conv(residual)
+        return out + residual
 
 
 class Generator(nn.Module):
-    def __init__(self, latent_dim, img_size, img_channels):
-        super(Generator, self).__init__()
+    def __init__(self, latent_dim, num_classes, img_size, channels):
+        super().__init__()
+        self.latent_dim = latent_dim
+        self.num_classes = num_classes
+        self.img_size = img_size
+        self.channels = channels
+
         self.init_size = img_size // 4
-        self.l1 = nn.Sequential(nn.Linear(latent_dim, 128 * self.init_size**2))
+        self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 256))
+        self.embed = nn.Embedding(num_classes, latent_dim)
 
-        self.conv_blocks = nn.Sequential(
-            nn.BatchNorm2d(128),
-            nn.Upsample(scale_factor=2),
-            spectral_norm(nn.Conv2d(128, 128, 3, stride=1, padding=1)),
-            nn.BatchNorm2d(128, 0.8),
-            nn.LeakyReLU(0.2, inplace=True),
-            nn.Upsample(scale_factor=2),
-            spectral_norm(nn.Conv2d(128, 64, 3, stride=1, padding=1)),
-            nn.BatchNorm2d(64, 0.8),
-            nn.LeakyReLU(0.2, inplace=True),
-            spectral_norm(nn.Conv2d(64, img_channels, 3, stride=1, padding=1)),
-            nn.Tanh(),
+        self.res_blocks = nn.ModuleList(
+            [
+                ResBlock(256, 256, upsample=True),
+                ResBlock(256, 128, upsample=True),
+            ]
+        )
+        if img_size == 32:  # For CIFAR
+            self.res_blocks.append(ResBlock(128, 64))
+
+        self.final_conv = spectral_norm(
+            nn.Conv2d(64 if img_size == 32 else 128, channels, 3, padding=1)
         )
 
-        self.attn1 = SelfAttention(128)
-        self.attn2 = SelfAttention(64)
-
-    def forward(self, z):
-        out = self.l1(z)
-        out = out.view(out.shape[0], 128, self.init_size, self.init_size)
-        out = self.conv_blocks[0:3](out)
-        out = self.attn1(out)
-        out = self.conv_blocks[3:7](out)
-        out = self.attn2(out)
-        img = self.conv_blocks[7:](out)
-        return img
+    def forward(self, z, y):
+        embedded_y = self.embed(y)
+        z = torch.mul(z, embedded_y)
+        out = self.linear(z).view(-1, 256, 4, 4)
+        for block in self.res_blocks:
+            out = block(out)
+        out = F.relu(out)
+        out = self.final_conv(out)
+        return torch.tanh(out)
 
 
-# Discriminator
 class Discriminator(nn.Module):
-    def __init__(self, img_size, img_channels):
-        super(Discriminator, self).__init__()
-        self.model = nn.Sequential(
-            spectral_norm(nn.Conv2d(img_channels, 64, 3, 2, 1)),
-            nn.LeakyReLU(0.2, inplace=True),
-            spectral_norm(nn.Conv2d(64, 128, 3, 2, 1)),
-            nn.LeakyReLU(0.2, inplace=True),
-            SelfAttention(128),
-            spectral_norm(nn.Conv2d(128, 128, 3, 2, 1)),
-            nn.LeakyReLU(0.2, inplace=True),
-            SelfAttention(128),
-        )
-        ds_size = img_size // 8
-        self.adv_layer = spectral_norm(nn.Linear(128 * ds_size**2, 1))
+    def __init__(self, num_classes, img_size, channels):
+        super().__init__()
 
-    def forward(self, img):
+        def discriminator_block(in_filters, out_filters):
+            return [
+                spectral_norm(nn.Conv2d(in_filters, out_filters, 3, 2, 1)),
+                nn.LeakyReLU(0.2, inplace=True),
+                nn.Dropout2d(0.25),
+            ]
+
+        self.model = nn.Sequential(
+            *discriminator_block(channels, 64),
+            *discriminator_block(64, 128),
+            *discriminator_block(128, 256),
+            *discriminator_block(256, 512),
+        )
+
+        ds_size = img_size // 2**4
+        self.adv_layer = spectral_norm(nn.Linear(512 * ds_size**2, 1))
+        self.embed = nn.Embedding(num_classes, 512 * ds_size**2)
+
+    def forward(self, img, labels):
         out = self.model(img)
         out = out.view(out.shape[0], -1)
         validity = self.adv_layer(out)
-        return validity
+
+        projection = torch.sum(out * self.embed(labels), dim=1, keepdim=True)
+        return validity + projection
 
 
 # Initialize the model
 class BigGAN:
-    def __init__(self, latent_dim, img_size, img_channels, device):
-        self.generator = Generator(latent_dim, img_size, img_channels).to(device)
-        self.discriminator = Discriminator(img_size, img_channels).to(device)
+    def __init__(self, latent_dim, num_classes, img_size, img_channels, device):
+        self.generator = Generator(latent_dim, num_classes, img_size, img_channels).to(
+            device
+        )
+        self.discriminator = Discriminator(img_size, num_classes, img_channels).to(
+            device
+        )
         self.latent_dim = latent_dim
         self.loss = nn.BCEWithLogitsLoss()
         self.device = device
