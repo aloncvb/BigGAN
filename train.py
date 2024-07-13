@@ -221,7 +221,7 @@ def main(args):
 
     fixed_noise = torch.randn(64, args.latent_dim, device=device)
     fixed_labels = (
-        torch.arange(10, device=device).repeat(6).long()
+        torch.arange(10, device=device).repeat(6).long().to(device)
     )  # 0-9 repeated 6 times, plus 4 random
     for epoch in range(1, args.epochs + 1):
         loss_train_d, loss_train_g = train(
