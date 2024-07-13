@@ -64,12 +64,10 @@ def test(
     testloader: DataLoader,
     filename: str,
     epoch: int,
-    fixed_noise,
-    fixed_labels,
 ):
     gan.eval()
     with torch.no_grad():
-        samples = gan.generator(fixed_noise, fixed_labels)
+        samples = gan.generate_fake(64)[0]
         torchvision.utils.save_image(
             torchvision.utils.make_grid(samples),
             "./samples/" + filename + f"epoch{epoch}.png",
@@ -219,10 +217,6 @@ def main(args):
     loss_train_arr_g = []
     loss_test_arr_g = []
 
-    fixed_noise = torch.randn(64, args.latent_dim, device=device)
-    fixed_labels = (
-        torch.arange(10, device=device).repeat(6).long().to(device)
-    )  # 0-9 repeated 6 times, plus 4 random
     for epoch in range(1, args.epochs + 1):
         loss_train_d, loss_train_g = train(
             biggan,
@@ -234,7 +228,10 @@ def main(args):
         loss_train_arr_d.append(loss_train_d)
         loss_train_arr_g.append(loss_train_g)
         loss_test_d, loss_test_g = test(
-            biggan, testloader, filename, epoch, fixed_noise, fixed_labels
+            biggan,
+            testloader,
+            filename,
+            epoch,
         )
         loss_test_arr_d.append(loss_test_d)
         loss_test_arr_g.append(loss_test_g)
