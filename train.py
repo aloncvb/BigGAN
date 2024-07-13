@@ -111,7 +111,7 @@ def test(
 
 def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    img_size = 128
+    img_size = 64
     if args.dataset == "mnist":
         transform = transforms.Compose(
             [
