@@ -111,12 +111,12 @@ def test(
 
 def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
+    img_size = 128
     if args.dataset == "mnist":
         transform = transforms.Compose(
             [
                 transforms.Resize(
-                    (64),
+                    (img_size),
                     interpolation=transforms.InterpolationMode.BICUBIC,  # size_that_worked = 64
                 ),
                 transforms.Grayscale(num_output_channels=3),  # Convert to RGB
@@ -142,9 +142,10 @@ def main(args):
         transform = transforms.Compose(
             [
                 transforms.Resize(
-                    (64, 64), interpolation=transforms.InterpolationMode.BICUBIC
+                    (img_size, img_size),
+                    interpolation=transforms.InterpolationMode.BICUBIC,
                 ),
-                RandomCrop(64, padding=4),
+                RandomCrop(img_size, padding=4),
                 RandomHorizontalFlip(),
                 RandomApply(
                     [
@@ -177,7 +178,7 @@ def main(args):
     elif args.dataset == "celeba":
         transform = transforms.Compose(
             [
-                transforms.Resize((128, 128)),
+                transforms.Resize((img_size, img_size)),
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -210,10 +211,10 @@ def main(args):
     )
 
     biggan = BigGAN(
-        latent_dim=args.latent_dim, img_size=128, img_channels=3, device=device
+        latent_dim=args.latent_dim, img_size=img_size, img_channels=3, device=device
     )
     optimizer_d = torch.optim.Adam(
-        biggan.discriminator.parameters(), lr=args.lr * 4, betas=(0.5, 0.999)
+        biggan.discriminator.parameters(), lr=args.lr * 3, betas=(0.5, 0.999)
     )
     optimizer_g = torch.optim.Adam(
         biggan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)

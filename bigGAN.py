@@ -4,9 +4,9 @@ import torch.nn.functional as F
 import numpy as np
 
 
-image_size = 28
-nc = 3  # Number of channels in the training images. For color images this is 3
-feature_num = 128  # Size of feature maps in generator/discriminator
+# image_size = 28
+# nc = 3  # Number of channels in the training images. For color images this is 3
+# feature_num = 128  # Size of feature maps in generator/discriminator
 
 
 def spectral_norm(module, mode=True):
@@ -94,7 +94,7 @@ class Generator(nn.Module):
                 out.size(2) == self.img_size
             ):  # If we've reached the target size, stop upsampling
                 break
-
+        print(f"Generator output shape: {out.shape}")
         return out
 
 
@@ -127,8 +127,11 @@ class Discriminator(nn.Module):
         )
 
     def forward(self, img):
+        print(f"Discriminator input shape: {img.shape}")
         out = self.model(img)
+        print(f"Discriminator feature map shape: {out.shape}")
         out = out.view(out.shape[0], -1)
+        print(f"Discriminator flattened shape: {out.shape}")
         validity = self.adv_layer(out)
         return validity
 
