@@ -45,25 +45,24 @@ def train(
                 # gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
                 # loss_d += 10 * gp  # lambda = 10
 
-            scaler.scale(loss_d).backward()
+            # scaler.scale(loss_d).backward()
             torch.nn.utils.clip_grad_norm_(
                 gan.discriminator.parameters(), max_grad_norm
             )
-            scaler.step(optimizer_d)
-            scaler.update()
+            # scaler.step(optimizer_d)
+            # scaler.update()
 
         # Generator training
         with autocast():
             optimizer_g.zero_grad()
             fake_images, fake_labels = gan.generate_fake(batch_size)
 
-            # Revert to BCE loss
             loss_g = gan.calculate_generator_loss(fake_images, fake_labels)
 
-        scaler.scale(loss_g).backward()
+        # scaler.scale(loss_g).backward()
         torch.nn.utils.clip_grad_norm_(gan.generator.parameters(), max_grad_norm)
-        scaler.step(optimizer_g)
-        scaler.update()
+        # scaler.step(optimizer_g)
+        # scaler.update()
 
         total_loss_d += loss_d.item()
         total_loss_g += loss_g.item()
@@ -128,7 +127,9 @@ def main(args):
                     (32),
                     interpolation=transforms.InterpolationMode.BICUBIC,  # size_that_worked = 64
                 ),
-                transforms.Grayscale(num_output_channels=3),  # Convert to RGB
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(32, padding=4),
+                transforms.Grayscale(num_output_channels=3),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
             ]
