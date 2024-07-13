@@ -210,8 +210,12 @@ def main(args):
     optimizer_g = torch.optim.Adam(
         biggan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)
     )
-    scheduler_d = torch.optim.lr_scheduler.StepLR(optimizer_d, step_size=30, gamma=0.5)
-    scheduler_g = torch.optim.lr_scheduler.StepLR(optimizer_g, step_size=30, gamma=0.5)
+    scheduler_d = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer_d, T_max=args.epochs
+    )
+    scheduler_g = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer_g, T_max=args.epochs
+    )
     loss_train_arr_d = []
     loss_test_arr_d = []
     loss_train_arr_g = []
