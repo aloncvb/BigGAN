@@ -7,6 +7,31 @@ def spectral_norm(module):
     return nn.utils.spectral_norm(module)
 
 
+class SelfAttention(nn.Module):
+    def __init__(self, in_channels):
+        super().__init__()
+        self.query = spectral_norm(nn.Conv1d(in_channels, in_channels // 8, 1))
+        self.key = spectral_norm(nn.Conv1d(in_channels, in_channels // 8, 1))
+        self.value = spectral_norm(nn.Conv1d(in_channels, in_channels, 1))
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        batch_size, C, W, H = x.size()
+        loc = x.view(batch_size, C, -1)
+
+        query = self.query(loc).view(batch_size, -1, W * H).permute(0, 2, 1)
+        key = self.key(loc).view(batch_size, -1, W * H)
+        value = self.value(loc).view(batch_size, -1, W * H)
+
+        attn = torch.bmm(query, key)
+        attn = F.softmax(attn, dim=2)
+
+        out = torch.bmm(value, attn.permute(0, 2, 1))
+        out = out.view(batch_size, C, W, H)
+
+        return self.gamma * out + x
+
+
 class ConditionalBatchNorm2d(nn.Module):
     def __init__(self, num_features, num_classes):
         super().__init__()
@@ -32,17 +57,16 @@ class ResBlock(nn.Module):
         self.cbn2 = ConditionalBatchNorm2d(out_channel, num_classes)
         self.conv2 = spectral_norm(nn.Conv2d(out_channel, out_channel, 3, padding=1))
         self.bypass = spectral_norm(nn.Conv2d(in_channel, out_channel, 1, padding=0))
+        self.activation = nn.LeakyReLU(0.2, inplace=True)
 
     def forward(self, x, y):
         residual = x
-        out = self.cbn1(x, y)
-        out = F.relu(out)
+        out = self.activation(self.cbn1(x, y))
         if self.upsample:
             out = F.interpolate(out, scale_factor=2, mode="nearest")
             residual = F.interpolate(residual, scale_factor=2, mode="nearest")
         out = self.conv1(out)
-        out = self.cbn2(out, y)
-        out = F.relu(out)
+        out = self.activation(self.cbn2(out, y))
         out = self.conv2(out)
         if self.upsample:
             residual = self.bypass(residual)
@@ -58,11 +82,12 @@ class Generator(nn.Module):
         self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 512))
         self.res_blocks = nn.ModuleList(
             [
-                ResBlock(512, 256, num_classes, upsample=True),  # 4x4 -> 8x8
-                ResBlock(256, 128, num_classes, upsample=True),  # 8x8 -> 16x16
-                ResBlock(128, 64, num_classes, upsample=True),  # 16x16 -> 32x32
+                ResBlock(512, 256, num_classes, upsample=True),
+                ResBlock(256, 128, num_classes, upsample=True),
+                ResBlock(128, 64, num_classes, upsample=True),
             ]
         )
+        self.attention = SelfAttention(64)
         self.final_bn = ConditionalBatchNorm2d(64, num_classes)
         self.final_conv = spectral_norm(nn.Conv2d(64, channels, 3, padding=1))
 
@@ -70,7 +95,8 @@ class Generator(nn.Module):
         out = self.linear(z).view(-1, 512, 4, 4)
         for block in self.res_blocks:
             out = block(out, y)
-        out = F.relu(self.final_bn(out, y))
+        out = self.attention(out)
+        out = F.leaky_relu(self.final_bn(out, y), 0.2)
         out = self.final_conv(out)
         return torch.tanh(out)
 
@@ -88,14 +114,14 @@ class Discriminator(nn.Module):
             ]
 
         self.model = nn.Sequential(
-            *discriminator_block(channels, 64),  # 32x32 -> 16x16
-            *discriminator_block(64, 128),  # 16x16 -> 8x8
-            *discriminator_block(128, 256),  # 8x8 -> 4x4
-            *discriminator_block(256, 512, stride=1),  # 4x4 -> 4x4
+            *discriminator_block(channels, 64),
+            *discriminator_block(64, 128),
+            *discriminator_block(128, 256),
+            SelfAttention(256),
+            *discriminator_block(256, 512, stride=1),
         )
 
-        # Calculate the output size of the convolutional layers
-        self.output_size = 4  # Final spatial dimensions
+        self.output_size = 4
         self.output_dim = 512 * self.output_size * self.output_size
 
         self.linear = spectral_norm(nn.Linear(self.output_dim, 1))
