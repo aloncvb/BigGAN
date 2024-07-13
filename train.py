@@ -79,7 +79,7 @@ def train(
 
             # Gradient penalty
             gp = gan.gradient_penalty(noisy_batch, noisy_fake_images.detach(), labels)
-            loss_d += gan.gp_weight * gp
+            loss_d += 0.1 * gp
 
         scaler.scale(loss_d).backward()
         scaler.unscale_(optimizer_d)
