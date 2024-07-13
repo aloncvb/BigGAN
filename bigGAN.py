@@ -172,7 +172,7 @@ class BigGAN:
         self.discriminator.eval()
 
     def truncate_latent(self, z):
-        return 0.9 * z + 0.1 * torch.randn_like(z)
+        return 1.0 * z
 
     def soft_labels(self, tensor, smoothing=0.1):
         return tensor * (1 - smoothing) + smoothing * 0.5
