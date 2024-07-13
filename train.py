@@ -116,7 +116,7 @@ def main(args):
         transform = transforms.Compose(
             [
                 transforms.Resize(
-                    (64),
+                    (32),
                     interpolation=transforms.InterpolationMode.BICUBIC,  # size_that_worked = 64
                 ),
                 transforms.Grayscale(num_output_channels=3),  # Convert to RGB
@@ -141,10 +141,7 @@ def main(args):
     elif args.dataset == "cifar":
         transform = transforms.Compose(
             [
-                transforms.Resize(
-                    (64, 64), interpolation=transforms.InterpolationMode.BICUBIC
-                ),
-                RandomCrop(64, padding=4),
+                RandomCrop(32, padding=4),
                 RandomHorizontalFlip(),
                 RandomApply(
                     [
@@ -210,7 +207,11 @@ def main(args):
     )
 
     biggan = BigGAN(
-        latent_dim=args.latent_dim, img_size=64, img_channels=3, device=device
+        latent_dim=args.latent_dim,
+        num_classes=10,
+        img_size=32,
+        img_channels=3,
+        device=device,
     )
     optimizer_d = torch.optim.Adam(
         biggan.discriminator.parameters(), lr=args.lr * 4, betas=(0.5, 0.999)
