@@ -96,7 +96,7 @@ class Generator(nn.Module):
                 out = self.attn1(out)
             elif i == 1:
                 out = self.attn2(out)
-        print(f"Generator output shape: {out.shape}")
+        # print(f"Generator output shape: {out.shape}")
 
         return out
 
@@ -130,11 +130,10 @@ class Discriminator(nn.Module):
         )
 
     def forward(self, img):
-        print(f"Discriminator input shape: {img.shape}")
+        # print(f"Discriminator input shape: {img.shape}")
         out = self.model(img)
-        print(f"Discriminator feature map shape: {out.shape}")
         out = out.view(out.shape[0], -1)
-        print(f"Discriminator flattened shape: {out.shape}")
+        # print(f"Discriminator flattened shape: {out.shape}")
         validity = self.adv_layer(out)
         return validity
 
