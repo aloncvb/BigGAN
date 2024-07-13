@@ -98,10 +98,12 @@ class Discriminator(nn.Module):
             *discriminator_block(512, 1024)
         )
 
-        self.linear = spectral_norm(nn.Linear(1024 * (img_size // 32) ** 2, 1))
-        self.embed = spectral_norm(
-            nn.Embedding(num_classes, 1024 * (img_size // 32) ** 2)
-        )
+        # Calculate the output size of the convolutional layers
+        self.output_size = img_size // 32
+        self.output_dim = 1024 * self.output_size * self.output_size
+
+        self.linear = spectral_norm(nn.Linear(self.output_dim, 1))
+        self.embed = spectral_norm(nn.Embedding(num_classes, self.output_dim))
 
     def forward(self, img, labels):
         out = self.model(img)
