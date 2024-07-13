@@ -157,7 +157,7 @@ class BigGAN:
             labels = torch.randint(
                 0, self.num_classes, (batch_size,), device=self.device
             )
-        z = self.truncate_latent(z)  # Apply truncation trick
+        # z = self.truncate_latent(z)  # Apply truncation trick
         return self.generator.forward(z, labels), labels
 
     def discriminate(self, x, labels):
