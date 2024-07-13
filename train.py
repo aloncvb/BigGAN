@@ -32,8 +32,8 @@ def train(
     total_loss_g = 0
     batch_idx = 0
     for batch, labels in trainloader:
-        data = batch.to(gan.device)
-        batch_size = data.size()[0]
+        batch = batch.to(gan.device)
+        batch_size = batch.size()[0]
         labels = labels.to(gan.device)
 
         # Discriminator training
