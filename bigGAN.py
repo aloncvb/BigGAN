@@ -169,3 +169,30 @@ class BigGAN:
         real_labels_smooth = self.soft_labels(torch.ones_like(fake_output))
 
         return F.binary_cross_entropy_with_logits(fake_output, real_labels_smooth)
+
+    def orthogonal_regularization(self, model):
+        reg = 0
+        for name, param in model.named_parameters():
+            if "weight" in name:
+                w = param.view(param.size(0), -1)
+                reg += torch.sum(
+                    (torch.mm(w, w.t()) - torch.eye(w.size(0), device=w.device)) ** 2
+                )
+        return reg
+
+    def gradient_penalty(self, real_images, fake_images, labels):
+        alpha = torch.rand(real_images.size(0), 1, 1, 1, device=self.device)
+        interpolated = (alpha * real_images + (1 - alpha) * fake_images).requires_grad_(
+            True
+        )
+        d_interpolated, _ = self.discriminate(interpolated, labels)
+        grad = torch.autograd.grad(
+            outputs=d_interpolated,
+            inputs=interpolated,
+            grad_outputs=torch.ones_like(d_interpolated),
+            create_graph=True,
+            retain_graph=True,
+        )[0]
+        grad = grad.view(grad.size(0), -1)
+        penalty = ((grad.norm(2, dim=1) - 1) ** 2).mean()
+        return penalty

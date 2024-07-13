@@ -24,10 +24,8 @@ def train(
     trainloader: DataLoader,
     optimizer_d: Adam,
     optimizer_g: Adam,
-    epoch: int,
 ):
-    gan.train()  # set to training mode
-
+    gan.train()
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
@@ -37,18 +35,31 @@ def train(
         labels = labels.to(gan.device)
 
         # Discriminator training
-        optimizer_d.zero_grad()
-        fake_images, fake_labels = gan.generate_fake(batch_size)
-        loss_d = gan.calculate_discriminator_loss(
-            batch, labels, fake_images.detach(), fake_labels
-        )
-        loss_d.backward()
-        optimizer_d.step()
+        for _ in range(2):  # Train discriminator more
+            optimizer_d.zero_grad()
+            fake_images, fake_labels = gan.generate_fake(batch_size)
+            loss_d = gan.calculate_discriminator_loss(
+                batch, labels, fake_images.detach(), fake_labels
+            )
+
+            # Add gradient penalty
+            gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
+            loss_d += 10 * gp  # lambda = 10
+
+            # Add orthogonal regularization
+            loss_d += 1e-4 * gan.orthogonal_regularization(gan.discriminator)
+
+            loss_d.backward()
+            optimizer_d.step()
 
         # Generator training
         optimizer_g.zero_grad()
         fake_images, fake_labels = gan.generate_fake(batch_size)
         loss_g = gan.calculate_generator_loss(fake_images, fake_labels)
+
+        # Add orthogonal regularization
+        loss_g += 1e-4 * gan.orthogonal_regularization(gan.generator)
+
         loss_g.backward()
         optimizer_g.step()
 
@@ -205,7 +216,7 @@ def main(args):
         device=device,
     )
     optimizer_d = torch.optim.Adam(
-        biggan.discriminator.parameters(), lr=args.lr * 3, betas=(0.5, 0.999)
+        biggan.discriminator.parameters(), lr=args.lr * 4, betas=(0.5, 0.999)
     )
     optimizer_g = torch.optim.Adam(
         biggan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)
@@ -227,7 +238,6 @@ def main(args):
             trainloader,
             optimizer_d=optimizer_d,
             optimizer_g=optimizer_g,
-            epoch=epoch,
         )
         loss_train_arr_d.append(loss_train_d)
         loss_train_arr_g.append(loss_train_g)
@@ -278,9 +288,7 @@ if __name__ == "__main__":
     )
 
     parser.add_argument("--latent-dim", help=".", type=int, default=100)
-    parser.add_argument(
-        "--lr", help="initial learning rate.", type=float, default=0.0002
-    )
+    parser.add_argument("--lr", help="initial learning rate.", type=float, default=1e-4)
 
     args = parser.parse_args()
 
