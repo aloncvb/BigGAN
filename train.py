@@ -1,6 +1,3 @@
-"""Training procedure for gan.
-"""
-
 import os
 import argparse
 from random import randrange
@@ -16,6 +13,8 @@ from torchvision.transforms import (
 )
 from torch.utils.data import DataLoader
 from torch.optim import Adam
+from torch.cuda.amp import GradScaler, autocast
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from bigGAN import BigGAN
 
 
@@ -24,6 +23,7 @@ def train(
     trainloader: DataLoader,
     optimizer_d: Adam,
     optimizer_g: Adam,
+    scaler: GradScaler,
 ):
     gan.train()
     total_loss_d = 0
@@ -36,32 +36,37 @@ def train(
 
         # Discriminator training
         for _ in range(2):  # Train discriminator more
-            optimizer_d.zero_grad()
-            fake_images, fake_labels = gan.generate_fake(batch_size)
-            loss_d = gan.calculate_discriminator_loss(
-                batch, labels, fake_images.detach(), fake_labels
-            )
+            with autocast():
+                optimizer_d.zero_grad()
+                real_pred = gan.discriminate(batch, labels)
+                fake_images, fake_labels = gan.generate_fake(batch_size)
+                fake_pred = gan.discriminate(fake_images.detach(), fake_labels)
+                loss_d = gan.hinge_loss_d(real_pred, fake_pred)
 
-            # Add gradient penalty
-            gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
-            loss_d += 10 * gp  # lambda = 10
+                # Add gradient penalty
+                gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
+                loss_d += 10 * gp  # lambda = 10
 
-            # Add orthogonal regularization
-            loss_d += 1e-4 * gan.orthogonal_regularization(gan.discriminator)
+                # Add orthogonal regularization
+                loss_d += 1e-4 * gan.orthogonal_regularization(gan.discriminator)
 
-            loss_d.backward()
-            optimizer_d.step()
+            scaler.scale(loss_d).backward()
+            scaler.step(optimizer_d)
 
         # Generator training
-        optimizer_g.zero_grad()
-        fake_images, fake_labels = gan.generate_fake(batch_size)
-        loss_g = gan.calculate_generator_loss(fake_images, fake_labels)
+        with autocast():
+            optimizer_g.zero_grad()
+            fake_images, fake_labels = gan.generate_fake(batch_size)
+            fake_pred = gan.discriminate(fake_images, fake_labels)
+            loss_g = gan.hinge_loss_g(fake_pred)
 
-        # Add orthogonal regularization
-        loss_g += 1e-4 * gan.orthogonal_regularization(gan.generator)
+            # Add orthogonal regularization
+            loss_g += 1e-4 * gan.orthogonal_regularization(gan.generator)
 
-        loss_g.backward()
-        optimizer_g.step()
+        scaler.scale(loss_g).backward()
+        scaler.step(optimizer_g)
+
+        scaler.update()
 
         total_loss_d += loss_d.item()
         total_loss_g += loss_g.item()
@@ -215,18 +220,14 @@ def main(args):
         img_channels=3,
         device=device,
     )
-    optimizer_d = torch.optim.Adam(
-        biggan.discriminator.parameters(), lr=args.lr * 4, betas=(0.5, 0.999)
+    optimizer_d = Adam(
+        biggan.discriminator.parameters(), lr=args.lr_d, betas=(0.0, 0.999)
     )
-    optimizer_g = torch.optim.Adam(
-        biggan.generator.parameters(), lr=args.lr, betas=(0.5, 0.999)
-    )
-    scheduler_d = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer_d, T_max=args.epochs
-    )
-    scheduler_g = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer_g, T_max=args.epochs
-    )
+    optimizer_g = Adam(biggan.generator.parameters(), lr=args.lr_g, betas=(0.0, 0.999))
+    scheduler_d = CosineAnnealingLR(optimizer_d, T_max=args.epochs)
+    scheduler_g = CosineAnnealingLR(optimizer_g, T_max=args.epochs)
+    scaler = GradScaler()
+
     loss_train_arr_d = []
     loss_test_arr_d = []
     loss_train_arr_g = []
@@ -238,6 +239,7 @@ def main(args):
             trainloader,
             optimizer_d=optimizer_d,
             optimizer_g=optimizer_g,
+            scaler=scaler,
         )
         loss_train_arr_d.append(loss_train_d)
         loss_train_arr_g.append(loss_train_g)
@@ -275,20 +277,24 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("")
     parser.add_argument(
-        "--dataset", help="dataset to be modeled.", type=str, default="mnist"
+        "--dataset", help="dataset to be modeled.", type=str, default="cifar"
     )
     parser.add_argument(
-        "--batch_size", help="number of images in a mini-batch.", type=int, default=64
+        "--batch_size", help="number of images in a mini-batch.", type=int, default=128
     )
     parser.add_argument(
-        "--epochs", help="maximum number of iterations.", type=int, default=20
+        "--epochs", help="maximum number of iterations.", type=int, default=30
     )
     parser.add_argument(
         "--sample_size", help="number of images to generate.", type=int, default=64
     )
-
-    parser.add_argument("--latent-dim", help=".", type=int, default=128)
-    parser.add_argument("--lr", help="initial learning rate.", type=float, default=1e-4)
+    parser.add_argument("--latent-dim", help="latent dimension", type=int, default=100)
+    parser.add_argument(
+        "--lr-d", help="discriminator learning rate.", type=float, default=4e-4
+    )
+    parser.add_argument(
+        "--lr-g", help="generator learning rate.", type=float, default=1e-4
+    )
 
     args = parser.parse_args()
 
