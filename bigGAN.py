@@ -79,24 +79,22 @@ class Generator(nn.Module):
         self.latent_dim = latent_dim
         self.num_classes = num_classes
 
-        self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 512))
+        self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 256))
         self.res_blocks = nn.ModuleList(
             [
-                ResBlock(512, 256, num_classes, upsample=True),
                 ResBlock(256, 128, num_classes, upsample=True),
                 ResBlock(128, 64, num_classes, upsample=True),
+                ResBlock(64, 32, num_classes, upsample=True),
             ]
         )
-        self.attention = SelfAttention(64)
-        self.final_bn = ConditionalBatchNorm2d(64, num_classes)
-        self.final_conv = spectral_norm(nn.Conv2d(64, channels, 3, padding=1))
+        self.final_bn = ConditionalBatchNorm2d(32, num_classes)
+        self.final_conv = spectral_norm(nn.Conv2d(32, channels, 3, padding=1))
 
     def forward(self, z, y):
-        out = self.linear(z).view(-1, 512, 4, 4)
+        out = self.linear(z).view(-1, 256, 4, 4)
         for block in self.res_blocks:
             out = block(out, y)
-        out = self.attention(out)
-        out = F.leaky_relu(self.final_bn(out, y), 0.2)
+        out = F.relu(self.final_bn(out, y))
         out = self.final_conv(out)
         return torch.tanh(out)
 
@@ -114,15 +112,14 @@ class Discriminator(nn.Module):
             ]
 
         self.model = nn.Sequential(
-            *discriminator_block(channels, 64),
+            *discriminator_block(channels, 32),
+            *discriminator_block(32, 64),
             *discriminator_block(64, 128),
-            *discriminator_block(128, 256),
-            SelfAttention(256),
-            *discriminator_block(256, 512, stride=1),
+            *discriminator_block(128, 256, stride=1),
         )
 
         self.output_size = 4
-        self.output_dim = 512 * self.output_size * self.output_size
+        self.output_dim = 256 * self.output_size * self.output_size
 
         self.linear = spectral_norm(nn.Linear(self.output_dim, 1))
         self.embed = spectral_norm(nn.Embedding(num_classes, self.output_dim))

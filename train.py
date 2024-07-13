@@ -124,13 +124,9 @@ def main(args):
     if args.dataset == "mnist":
         transform = transforms.Compose(
             [
-                transforms.Resize(
-                    (32),
-                    interpolation=transforms.InterpolationMode.BICUBIC,  # size_that_worked = 64
-                ),
-                transforms.Grayscale(num_output_channels=3),  # Convert to RGB
+                transforms.Resize((32, 32)),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5)),
+                transforms.Normalize([0.5], [0.5]),
             ]
         )
 
@@ -214,9 +210,9 @@ def main(args):
         device=device,
     )
     optimizer_d = Adam(
-        biggan.discriminator.parameters(), lr=args.lr_d, betas=(0.5, 0.999)
+        biggan.discriminator.parameters(), lr=args.lr_d, betas=(0.0, 0.9)
     )
-    optimizer_g = Adam(biggan.generator.parameters(), lr=args.lr_g, betas=(0.5, 0.999))
+    optimizer_g = Adam(biggan.generator.parameters(), lr=args.lr_g, betas=(0.0, 0.9))
     scheduler_d = CosineAnnealingLR(optimizer_d, T_max=args.epochs)
     scheduler_g = CosineAnnealingLR(optimizer_g, T_max=args.epochs)
     scaler = GradScaler()
@@ -283,10 +279,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--latent-dim", help="latent dimension", type=int, default=128)
     parser.add_argument(
-        "--lr-d", help="discriminator learning rate.", type=float, default=3e-4
+        "--lr-d", help="discriminator learning rate.", type=float, default=2e-4
     )
     parser.add_argument(
-        "--lr-g", help="generator learning rate.", type=float, default=1e-4
+        "--lr-g", help="generator learning rate.", type=float, default=2e-4
     )
 
     args = parser.parse_args()
