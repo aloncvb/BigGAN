@@ -60,7 +60,8 @@ class Generator(nn.Module):
         self.linear = spectral_norm(nn.Linear(latent_dim, 4 * 4 * 256))
         self.res_blocks = nn.ModuleList(
             [
-                ResBlock(256, 256, num_classes, upsample=True),
+                ResBlock(512, 512, num_classes, upsample=True),
+                ResBlock(512, 256, num_classes, upsample=True),
                 ResBlock(256, 128, num_classes, upsample=True),
                 ResBlock(128, 64, num_classes, upsample=True),
             ]
@@ -93,7 +94,8 @@ class Discriminator(nn.Module):
             *discriminator_block(channels, 64),
             *discriminator_block(64, 128),
             *discriminator_block(128, 256),
-            *discriminator_block(256, 512)
+            *discriminator_block(256, 512),
+            *discriminator_block(512, 1024),
         )
 
         self.linear = spectral_norm(nn.Linear(512 * (img_size // 16) ** 2, 1))
