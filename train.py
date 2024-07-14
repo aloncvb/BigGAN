@@ -42,7 +42,6 @@ def train(
             fake_images, fake_labels = gan.generate_fake(batch_size)
             fake_images = add_instance_noise(fake_images)
 
-            # Revert to BCE loss
             loss_d = gan.calculate_discriminator_loss(
                 batch, labels, fake_images, fake_labels
             )
@@ -93,7 +92,7 @@ def test(
 ):
     gan.eval()
     with torch.no_grad():
-        samples = gan.generate_fake(100)[0]
+        samples = gan.generate_high_quality(100)
         torchvision.utils.save_image(
             torchvision.utils.make_grid(samples),
             "./samples/" + filename + f"epoch{epoch}.png",

@@ -199,6 +199,17 @@ class BigGAN(nn.Module):
 
         return F.binary_cross_entropy_with_logits(fake_output, real_labels_smooth)
 
+    def generate_high_quality(self, batch_size, truncation=0.5):
+        with torch.no_grad():
+            z = self.generate_latent(batch_size)
+            labels = torch.randint(
+                0, self.num_classes, (batch_size,), device=self.device
+            )
+            z = z * truncation
+
+            images = self.generator.forward(z, labels, truncation)
+            return images
+
     def gradient_penalty(self, real_images, fake_images, labels):
         alpha = torch.rand(real_images.size(0), 1, 1, 1, device=self.device)
         interpolated = (alpha * real_images + (1 - alpha) * fake_images).requires_grad_(
