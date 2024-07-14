@@ -1,0 +1,209 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class SelfAttention(nn.Module):
+    def __init__(self, in_dim):
+        super(SelfAttention, self).__init__()
+        self.query_conv = nn.Conv2d(in_dim, in_dim // 8, 1)
+        self.key_conv = nn.Conv2d(in_dim, in_dim // 8, 1)
+        self.value_conv = nn.Conv2d(in_dim, in_dim, 1)
+        self.gamma = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        batch_size, C, W, H = x.size()
+        query = self.query_conv(x).view(batch_size, -1, W * H).permute(0, 2, 1)
+        key = self.key_conv(x).view(batch_size, -1, W * H)
+        energy = torch.bmm(query, key)
+        attention = F.softmax(energy, dim=-1)
+        value = self.value_conv(x).view(batch_size, -1, W * H)
+        out = torch.bmm(value, attention.permute(0, 2, 1))
+        out = out.view(batch_size, C, W, H)
+        return self.gamma * out + x
+
+
+class ResBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, upsample=False):
+        super(ResBlock, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, padding=1)
+        self.bn1 = nn.BatchNorm2d(in_channels)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+        self.upsample = upsample
+        self.skip_connection = (
+            nn.Conv2d(in_channels, out_channels, 1)
+            if in_channels != out_channels
+            else nn.Identity()
+        )
+
+    def forward(self, x):
+        residual = x
+        out = F.relu(self.bn1(x))
+        out = self.conv1(out)
+        out = F.relu(self.bn2(out))
+        out = self.conv2(out)
+        if self.upsample:
+            out = F.interpolate(out, scale_factor=2, mode="nearest")
+            residual = F.interpolate(residual, scale_factor=2, mode="nearest")
+        residual = self.skip_connection(residual)
+        return out + residual
+
+
+class Generator(nn.Module):
+    def __init__(self, latent_dim, num_classes, ch=32, img_channels=3):
+        super(Generator, self).__init__()
+        self.latent_dim = latent_dim
+        self.num_classes = num_classes
+
+        self.embed = nn.Embedding(num_classes, 128)
+        self.linear = nn.Linear(latent_dim + 128, 4 * 4 * 8 * ch)
+        self.res1 = ResBlock(8 * ch, 8 * ch, upsample=True)
+        self.res2 = ResBlock(8 * ch, 4 * ch, upsample=True)
+        self.res3 = ResBlock(4 * ch, 2 * ch, upsample=True)
+        self.attention = SelfAttention(2 * ch)
+        self.res4 = ResBlock(2 * ch, ch, upsample=False)
+        self.bn = nn.BatchNorm2d(ch)
+        self.conv_out = nn.Conv2d(ch, img_channels, 3, padding=1)
+
+    def forward(self, z, y):
+        y_embed = self.embed(y)
+        z = torch.cat([z, y_embed], dim=1)
+        x = self.linear(z).view(-1, 8 * self.ch, 4, 4)
+        x = self.res1(x)
+        x = self.res2(x)
+        x = self.res3(x)
+        x = self.attention(x)
+        x = self.res4(x)
+        x = F.relu(self.bn(x))
+        x = torch.tanh(self.conv_out(x))
+        return x
+
+
+class Discriminator(nn.Module):
+    def __init__(self, num_classes, ch=32, img_channels=3):
+        super(Discriminator, self).__init__()
+        self.num_classes = num_classes
+
+        self.res1 = ResBlock(img_channels, ch, upsample=False)
+        self.res2 = ResBlock(ch, 2 * ch, upsample=False)
+        self.attention = SelfAttention(2 * ch)
+        self.res3 = ResBlock(2 * ch, 4 * ch, upsample=False)
+        self.res4 = ResBlock(4 * ch, 8 * ch, upsample=False)
+        self.res5 = ResBlock(8 * ch, 16 * ch, upsample=False)
+        self.res6 = ResBlock(16 * ch, 16 * ch, upsample=False)
+        self.linear = nn.Linear(16 * ch, 1)
+        self.embed = nn.Embedding(num_classes, 16 * ch)
+
+    def forward(self, x, y):
+        x = self.res1(x)
+        x = self.res2(x)
+        x = self.attention(x)
+        x = self.res3(x)
+        x = self.res4(x)
+        x = self.res5(x)
+        x = self.res6(x)
+        x = F.relu(x)
+        x = torch.sum(x, dim=[2, 3])
+        out = self.linear(x)
+        embed = self.embed(y)
+        prod = torch.sum(x * embed, dim=1, keepdim=True)
+        return out + prod
+
+
+class BigGAN(nn.Module):
+    def __init__(self, latent_dim, num_classes, img_channels, device, ch=32):
+        super(BigGAN, self).__init__()
+        self.latent_dim = latent_dim
+        self.num_classes = num_classes
+        self.generator = Generator(
+            latent_dim, num_classes, ch, img_channels=img_channels
+        )
+        self.discriminator = Discriminator(num_classes, ch, img_channels=img_channels)
+        self.device = device
+
+    def generate_latent(self, batch_size):
+        return torch.randn(batch_size, self.latent_dim, device=self.device)
+
+    def generate_fake(self, batch_size, labels=None):
+        z = self.generate_latent(batch_size)
+        if labels is None:
+            labels = torch.randint(
+                0, self.num_classes, (batch_size,), device=self.device
+            )
+        # z = self.truncate_latent(z)  # Apply truncation trick
+        return self.generator.forward(z, labels), labels
+
+    def discriminate(self, x, labels):
+        return self.discriminator.forward(x, labels)
+
+    def train(self):
+        self.generator.train()
+        self.discriminator.train()
+
+    def eval(self):
+        self.generator.eval()
+        self.discriminator.eval()
+
+    def truncate_latent(self, z, threshold=0.5):
+        norm = torch.norm(z, dim=1, keepdim=True)
+        return z * (norm < threshold).float()
+
+    def soft_labels(self, tensor, smoothing=0.1):
+        return tensor * (1 - smoothing) + smoothing * 0.5
+
+    def calculate_discriminator_loss(
+        self, real_images, real_labels, fake_images, fake_labels
+    ):
+        real_output = self.discriminate(real_images, real_labels)
+        fake_output = self.discriminate(fake_images, fake_labels)
+
+        # Soft labels for real and fake
+        real_labels_smooth = self.soft_labels(
+            torch.ones_like(real_output), smoothing=0.1
+        )
+        fake_labels_smooth = self.soft_labels(
+            torch.zeros_like(fake_output), smoothing=0.1
+        )
+
+        real_loss = F.binary_cross_entropy_with_logits(real_output, real_labels_smooth)
+        fake_loss = F.binary_cross_entropy_with_logits(fake_output, fake_labels_smooth)
+
+        return real_loss + fake_loss
+
+    def calculate_generator_loss(self, fake_images, fake_labels):
+        fake_output = self.discriminate(fake_images, fake_labels)
+
+        # Use soft labels for generator as well
+        real_labels_smooth = self.soft_labels(
+            torch.ones_like(fake_output), smoothing=0.1
+        )
+
+        return F.binary_cross_entropy_with_logits(fake_output, real_labels_smooth)
+
+    def orthogonal_regularization(self, model):
+        reg = 0
+        for name, param in model.named_parameters():
+            if "weight" in name:
+                w = param.view(param.size(0), -1)
+                reg += torch.sum(
+                    (torch.mm(w, w.t()) - torch.eye(w.size(0), device=w.device)) ** 2
+                )
+        return reg
+
+    def gradient_penalty(self, real_images, fake_images, labels):
+        alpha = torch.rand(real_images.size(0), 1, 1, 1, device=self.device)
+        interpolated = (alpha * real_images + (1 - alpha) * fake_images).requires_grad_(
+            True
+        )
+        d_interpolated = self.discriminate(interpolated, labels)
+        grad = torch.autograd.grad(
+            outputs=d_interpolated,
+            inputs=interpolated,
+            grad_outputs=torch.ones_like(d_interpolated),
+            create_graph=True,
+            retain_graph=True,
+        )[0]
+        grad = grad.view(grad.size(0), -1)
+        penalty = ((grad.norm(2, dim=1) - 1) ** 2).mean()
+        return penalty

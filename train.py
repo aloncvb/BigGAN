@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from bigGAN import BigGAN
+from bigGANSimple import BigGAN
 
 
 def train(
@@ -179,7 +179,7 @@ def main(args):
     biggan = BigGAN(
         latent_dim=args.latent_dim,
         num_classes=10,
-        img_size=32,
+        # img_size=32,
         img_channels=3,
         device=device,
     )
