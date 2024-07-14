@@ -125,7 +125,7 @@ def main(args):
         transform = transforms.Compose(
             [
                 transforms.Resize((32, 32)),
-                transforms.Grayscale(num_output_channels=3),
+                transforms.Grayscale(num_output_channels=1),
                 transforms.ToTensor(),
                 transforms.Normalize([0.5], [0.5]),
             ]
@@ -180,7 +180,7 @@ def main(args):
         latent_dim=args.latent_dim,
         num_classes=10,
         # img_size=32,
-        img_channels=3,
+        img_channels=1 if args.dataset == "mnist" else 3,
         device=device,
     )
     optimizer_d = Adam(
