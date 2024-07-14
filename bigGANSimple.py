@@ -148,7 +148,9 @@ class BigGAN(nn.Module):
                 0, self.num_classes, (batch_size,), device=self.device
             )
         # z = self.truncate_latent(z)  # Apply truncation trick
-        return self.generator.forward(z, labels), labels
+
+        images = self.generator.forward(z, labels)
+        return images, labels
 
     def discriminate(self, x, labels):
         return self.discriminator.forward(x, labels)
