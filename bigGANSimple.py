@@ -55,6 +55,7 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.latent_dim = latent_dim
         self.num_classes = num_classes
+        self.ch = ch
 
         self.embed = nn.Embedding(num_classes, 128)
         self.linear = nn.Linear(latent_dim + 128, 4 * 4 * 8 * ch)
