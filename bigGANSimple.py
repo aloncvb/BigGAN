@@ -40,9 +40,9 @@ class ResBlock(nn.Module):
 
     def forward(self, x):
         residual = x
-        out = F.relu(self.bn1(x))
+        out = F.leaky_relu(self.bn1(x), 0.2)
         out = self.conv1(out)
-        out = F.relu(self.bn2(out))
+        out = F.leaky_relu(self.bn2(out), 0.2)
         out = self.conv2(out)
         if self.upsample:
             out = F.interpolate(out, scale_factor=2, mode="nearest")
@@ -79,7 +79,7 @@ class Generator(nn.Module):
         x = self.attention(x)
         x = self.res4(x)
         x = self.res5(x)
-        x = F.relu(self.bn(x))
+        x = F.leaky_relu(self.bn(x), 0.2)
         x = torch.tanh(self.conv_out(x))
         return x
 
@@ -107,7 +107,7 @@ class Discriminator(nn.Module):
         x = self.res4(x)
         x = self.res5(x)
         x = self.res6(x)
-        x = F.relu(x)
+        x = F.leaky_relu(x, 0.2)
         x = torch.sum(x, dim=[2, 3])
         out = self.linear(x)
         embed = self.embed(y)
