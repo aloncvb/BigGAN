@@ -118,8 +118,10 @@ class BigGAN(nn.Module):
         self.num_classes = num_classes
         self.generator = Generator(
             latent_dim, num_classes, ch, img_channels=img_channels
-        )
-        self.discriminator = Discriminator(num_classes, ch, img_channels=img_channels)
+        ).to(device)
+        self.discriminator = Discriminator(
+            num_classes, ch, img_channels=img_channels
+        ).to(device)
         self.device = device
 
     def generate_latent(self, batch_size):
