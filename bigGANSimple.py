@@ -207,7 +207,7 @@ class BigGAN(nn.Module):
             )
             z = z * truncation
 
-            images = self.generator.forward(z, labels, truncation)
+            images = self.generator.forward(z, labels)
             return images
 
     def gradient_penalty(self, real_images, fake_images, labels):
