@@ -13,6 +13,10 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from bigGANSimple import BigGAN
 
 
+def add_instance_noise(images, std=0.1):
+    return images + torch.randn_like(images) * std
+
+
 def train(
     gan: BigGAN,
     trainloader: DataLoader,
@@ -25,45 +29,49 @@ def train(
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
+    noise_std = 0.1
     for batch, labels in trainloader:
         batch = batch.to(gan.device)
         batch_size = batch.size()[0]
         labels = labels.to(gan.device)
-
+        batch = add_instance_noise(batch)
         # Discriminator training
-        for _ in range(1):
-            with autocast():
-                optimizer_d.zero_grad()
-                fake_images, fake_labels = gan.generate_fake(batch_size)
 
-                # Revert to BCE loss
-                loss_d = gan.calculate_discriminator_loss(
-                    batch, labels, fake_images, fake_labels
-                )
+        with autocast():
+            optimizer_d.zero_grad()
+            fake_images, fake_labels = gan.generate_fake(batch_size)
+            fake_images = add_instance_noise(fake_images)
 
-                # Add gradient penalty
-                # gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
-                # loss_d += 10 * gp  # lambda = 10
-
-            scaler.scale(loss_d).backward()
-            torch.nn.utils.clip_grad_norm_(
-                gan.discriminator.parameters(), max_grad_norm
+            # Revert to BCE loss
+            loss_d = gan.calculate_discriminator_loss(
+                batch, labels, fake_images, fake_labels
             )
-            scaler.step(optimizer_d)
-            scaler.update()
+
+            # Add gradient penalty
+            # gp = gan.gradient_penalty(batch, fake_images.detach(), labels)
+            # loss_d += 10 * gp  # lambda = 10
+
+        loss_d.backward()
+        torch.nn.utils.clip_grad_norm_(gan.discriminator.parameters(), max_grad_norm)
+        optimizer_d.step()
+        # scaler.scale(loss_d).backward()
+        # scaler.step(optimizer_d)
+        # scaler.update()
+        noise_std *= 0.99
 
         # Generator training
         with autocast():
             optimizer_g.zero_grad()
             fake_images, fake_labels = gan.generate_fake(batch_size)
-
             # Revert to BCE loss
             loss_g = gan.calculate_generator_loss(fake_images, fake_labels)
 
-        scaler.scale(loss_g).backward()
+        # scaler.scale(loss_g).backward()
+        loss_g.backward()
         torch.nn.utils.clip_grad_norm_(gan.generator.parameters(), max_grad_norm)
-        scaler.step(optimizer_g)
-        scaler.update()
+        optimizer_g.step()
+        # scaler.step(optimizer_g)
+        # scaler.update()
 
         total_loss_d += loss_d.item()
         total_loss_g += loss_g.item()
@@ -253,10 +261,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--latent-dim", help="latent dimension", type=int, default=128)
     parser.add_argument(
-        "--lr-d", help="discriminator learning rate.", type=float, default=2e-4
+        "--lr-d", help="discriminator learning rate.", type=float, default=1e-4
     )
     parser.add_argument(
-        "--lr-g", help="generator learning rate.", type=float, default=2e-4
+        "--lr-g", help="generator learning rate.", type=float, default=1e-4
     )
 
     args = parser.parse_args()
