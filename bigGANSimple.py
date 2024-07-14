@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.utils import spectral_norm
 
 
 class SelfAttention(nn.Module):
@@ -26,13 +27,13 @@ class SelfAttention(nn.Module):
 class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, upsample=False):
         super(ResBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, 3, padding=1)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, 3, padding=1)
+        self.conv1 = spectral_norm(nn.Conv2d(in_channels, out_channels, 3, padding=1))
+        self.conv2 = spectral_norm(nn.Conv2d(out_channels, out_channels, 3, padding=1))
         self.bn1 = nn.BatchNorm2d(in_channels)
         self.bn2 = nn.BatchNorm2d(out_channels)
         self.upsample = upsample
         self.skip_connection = (
-            nn.Conv2d(in_channels, out_channels, 1)
+            spectral_norm(nn.Conv2d(in_channels, out_channels, 1))
             if in_channels != out_channels
             else nn.Identity()
         )
@@ -51,31 +52,33 @@ class ResBlock(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, latent_dim, num_classes, ch=32, img_channels=3):
+    def __init__(self, latent_dim, num_classes, ch=64, img_channels=3):
         super(Generator, self).__init__()
         self.latent_dim = latent_dim
         self.num_classes = num_classes
         self.ch = ch
 
-        self.embed = nn.Embedding(num_classes, 128)
-        self.linear = nn.Linear(latent_dim + 128, 4 * 4 * 8 * ch)
-        self.res1 = ResBlock(8 * ch, 8 * ch, upsample=True)
-        self.res2 = ResBlock(8 * ch, 4 * ch, upsample=True)
-        self.res3 = ResBlock(4 * ch, 2 * ch, upsample=True)
-        self.attention = SelfAttention(2 * ch)
-        self.res4 = ResBlock(2 * ch, ch, upsample=False)
+        self.embed = spectral_norm(nn.Embedding(num_classes, 128))
+        self.linear = spectral_norm(nn.Linear(latent_dim + 128, 4 * 4 * 16 * ch))
+        self.res1 = ResBlock(16 * ch, 16 * ch, upsample=True)
+        self.res2 = ResBlock(16 * ch, 8 * ch, upsample=True)
+        self.res3 = ResBlock(8 * ch, 4 * ch, upsample=True)
+        self.attention = SelfAttention(4 * ch)
+        self.res4 = ResBlock(4 * ch, 2 * ch, upsample=False)
+        self.res5 = ResBlock(2 * ch, ch, upsample=False)
         self.bn = nn.BatchNorm2d(ch)
-        self.conv_out = nn.Conv2d(ch, img_channels, 3, padding=1)
+        self.conv_out = spectral_norm(nn.Conv2d(ch, img_channels, 3, padding=1))
 
     def forward(self, z, y):
         y_embed = self.embed(y)
         z = torch.cat([z, y_embed], dim=1)
-        x = self.linear(z).view(-1, 8 * self.ch, 4, 4)
+        x = self.linear(z).view(-1, 16 * self.ch, 4, 4)
         x = self.res1(x)
         x = self.res2(x)
         x = self.res3(x)
         x = self.attention(x)
         x = self.res4(x)
+        x = self.res5(x)
         x = F.relu(self.bn(x))
         x = torch.tanh(self.conv_out(x))
         return x
@@ -93,8 +96,8 @@ class Discriminator(nn.Module):
         self.res4 = ResBlock(4 * ch, 8 * ch, upsample=False)
         self.res5 = ResBlock(8 * ch, 16 * ch, upsample=False)
         self.res6 = ResBlock(16 * ch, 16 * ch, upsample=False)
-        self.linear = nn.Linear(16 * ch, 1)
-        self.embed = nn.Embedding(num_classes, 16 * ch)
+        self.linear = spectral_norm(nn.Linear(16 * ch, 1))
+        self.embed = spectral_norm(nn.Embedding(num_classes, 16 * ch))
 
     def forward(self, x, y):
         x = self.res1(x)
@@ -112,6 +115,13 @@ class Discriminator(nn.Module):
         return out + prod
 
 
+def weights_init(m):
+    if isinstance(m, (nn.Conv2d, nn.Linear)):
+        nn.init.xavier_uniform_(m.weight)
+        if m.bias is not None:
+            nn.init.constant_(m.bias, 0)
+
+
 class BigGAN(nn.Module):
     def __init__(self, latent_dim, num_classes, img_channels, device, ch=32):
         super(BigGAN, self).__init__()
@@ -124,6 +134,9 @@ class BigGAN(nn.Module):
             num_classes, ch, img_channels=img_channels
         ).to(device)
         self.device = device
+
+        self.generator.apply(weights_init)
+        self.discriminator.apply(weights_init)
 
     def generate_latent(self, batch_size):
         return torch.randn(batch_size, self.latent_dim, device=self.device)
