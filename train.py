@@ -85,7 +85,7 @@ def test(
 ):
     gan.eval()
     with torch.no_grad():
-        samples = gan.generate_fake(64)[0]
+        samples = gan.generate_fake(100)[0]
         torchvision.utils.save_image(
             torchvision.utils.make_grid(samples),
             "./samples/" + filename + f"epoch{epoch}.png",
@@ -164,33 +164,6 @@ def main(args):
         )
         testset = torchvision.datasets.CIFAR10(
             root="./data/Cifar10", download=True, transform=transform, train=False
-        )
-        testloader = torch.utils.data.DataLoader(
-            testset, batch_size=args.batch_size, shuffle=False, num_workers=2
-        )
-    elif args.dataset == "celeba":
-        transform = transforms.Compose(
-            [
-                transforms.Resize((64, 64)),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ]
-        )
-        trainset = torchvision.datasets.CelebA(
-            root="./data/CelebA",
-            split="train",
-            download=True,
-            transform=transform,
-        )
-        trainloader = torch.utils.data.DataLoader(
-            trainset, batch_size=args.batch_size, shuffle=True, num_workers=2
-        )
-        testset = torchvision.datasets.CelebA(
-            root="./data/CelebA",
-            download=True,
-            transform=transform,
-            split="test",
         )
         testloader = torch.utils.data.DataLoader(
             testset, batch_size=args.batch_size, shuffle=False, num_workers=2
