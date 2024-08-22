@@ -117,8 +117,9 @@ class Discriminator(nn.Module):
 
 def weights_init(m):
     if isinstance(m, (nn.Conv2d, nn.Linear)):
-        nn.init.xavier_uniform_(m.weight)
-        if m.bias is not None:
+        if hasattr(m, "weight"):
+            nn.init.orthogonal_(m.weight)  # maybe xavier?
+        if hasattr(m, "bias") and m.bias is not None:
             nn.init.constant_(m.bias, 0)
 
 
