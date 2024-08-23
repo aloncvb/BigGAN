@@ -80,6 +80,8 @@ class Generator(nn.Module):
         x = self.res4(x)
         x = self.res5(x)
         x = F.leaky_relu(self.bn(x), 0.2)
+        x = nn.Dropout(0.4)
+
         x = torch.tanh(self.conv_out(x))
         return x
 
