@@ -81,7 +81,6 @@ class Generator(nn.Module):
         x = self.attention(x)
         x = self.res5(x)
         x = F.leaky_relu(self.bn(x), 0.2)
-        x = nn.Dropout(0.4)(x)
 
         x = torch.tanh(self.conv_out(x))
         return x
@@ -113,6 +112,7 @@ class Discriminator(nn.Module):
         x = F.leaky_relu(x, 0.2)
         # global sum pooling: sum over all spatial dimensions
         x = torch.sum(x, dim=[2, 3])
+
         out = self.linear(x)
         embed = self.embed(y)
         prod = torch.sum(x * embed, dim=1, keepdim=True)
