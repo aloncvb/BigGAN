@@ -265,10 +265,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--latent-dim", help="latent dimension", type=int, default=128)
     parser.add_argument(
-        "--lr-d", help="discriminator learning rate.", type=float, default=1e-5
+        "--lr-d", help="discriminator learning rate.", type=float, default=0.0002
     )
     parser.add_argument(
-        "--lr-g", help="generator learning rate.", type=float, default=1e-4
+        "--lr-g", help="generator learning rate.", type=float, default=0.001
     )
 
     args = parser.parse_args()
