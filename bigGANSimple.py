@@ -77,8 +77,8 @@ class Generator(nn.Module):
         x = self.res1(x)
         x = self.res2(x)
         x = self.res3(x)
-        x = self.attention(x)
         x = self.res4(x)
+        x = self.attention(x)
         x = self.res5(x)
         x = F.leaky_relu(self.bn(x), 0.2)
         x = nn.Dropout(0.4)(x)
@@ -104,8 +104,8 @@ class Discriminator(nn.Module):
 
     def forward(self, x, y):
         x = self.res1(x)
-        x = self.res2(x)
         x = self.attention(x)
+        x = self.res2(x)
         x = self.res3(x)
         x = self.res4(x)
         x = self.res5(x)
