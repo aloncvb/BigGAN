@@ -5,7 +5,13 @@ import matplotlib.pyplot as plt
 import torch
 import torchvision
 from torchvision import transforms
-from torchvision.transforms import RandomCrop, RandomHorizontalFlip, ToTensor, Normalize
+from torchvision.transforms import (
+    RandomCrop,
+    RandomHorizontalFlip,
+    ToTensor,
+    Normalize,
+    CenterCrop,
+)
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.cuda.amp import GradScaler, autocast
@@ -160,6 +166,13 @@ def main(args):
                 Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
         )
+        transform_test = transforms.Compose(
+            [
+                CenterCrop(32),
+                ToTensor(),
+                Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ]
+        )
         trainset = torchvision.datasets.CIFAR10(
             root="./data/Cifar10",
             train=True,
@@ -170,7 +183,7 @@ def main(args):
             trainset, batch_size=args.batch_size, shuffle=True, num_workers=2
         )
         testset = torchvision.datasets.CIFAR10(
-            root="./data/Cifar10", download=True, transform=transform, train=False
+            root="./data/Cifar10", download=True, transform=transform_test, train=False
         )
         testloader = torch.utils.data.DataLoader(
             testset, batch_size=args.batch_size, shuffle=False, num_workers=2
@@ -268,7 +281,7 @@ if __name__ == "__main__":
         "--lr-d", help="discriminator learning rate.", type=float, default=0.0002
     )
     parser.add_argument(
-        "--lr-g", help="generator learning rate.", type=float, default=0.001
+        "--lr-g", help="generator learning rate.", type=float, default=0.0004
     )
 
     args = parser.parse_args()
