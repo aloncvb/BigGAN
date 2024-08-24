@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
 
 
+# used as a non-local block as described in the paper
 class SelfAttention(nn.Module):
     def __init__(self, in_dim):
         super(SelfAttention, self).__init__()
@@ -63,8 +64,8 @@ class Generator(nn.Module):
         self.res1 = ResBlock(16 * ch, 16 * ch, upsample=True)
         self.res2 = ResBlock(16 * ch, 8 * ch, upsample=True)
         self.res3 = ResBlock(8 * ch, 4 * ch, upsample=True)
-        self.attention = SelfAttention(4 * ch)
         self.res4 = ResBlock(4 * ch, 2 * ch, upsample=False)
+        self.attention = SelfAttention(2 * ch)
         self.res5 = ResBlock(2 * ch, ch, upsample=False)
         self.bn = nn.BatchNorm2d(ch)
         self.conv_out = spectral_norm(nn.Conv2d(ch, img_channels, 3, padding=1))
@@ -92,8 +93,8 @@ class Discriminator(nn.Module):
         self.num_classes = num_classes
 
         self.res1 = ResBlock(img_channels, ch, upsample=False)
+        self.attention = SelfAttention(ch)
         self.res2 = ResBlock(ch, 2 * ch, upsample=False)
-        self.attention = SelfAttention(2 * ch)
         self.res3 = ResBlock(2 * ch, 4 * ch, upsample=False)
         self.res4 = ResBlock(4 * ch, 8 * ch, upsample=False)
         self.res5 = ResBlock(8 * ch, 16 * ch, upsample=False)
@@ -110,6 +111,7 @@ class Discriminator(nn.Module):
         x = self.res5(x)
         x = self.res6(x)
         x = F.leaky_relu(x, 0.2)
+        # global sum pooling: sum over all spatial dimensions
         x = torch.sum(x, dim=[2, 3])
         out = self.linear(x)
         embed = self.embed(y)
