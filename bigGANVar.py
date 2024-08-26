@@ -128,11 +128,11 @@ class BigGAN(nn.Module):
             )
         # z = self.truncate_latent(z)  # Apply truncation trick
 
-        images = self.generator.forward(z, labels)
+        images = self.generator.forward(z)
         return images, labels
 
     def discriminate(self, x, labels):
-        return self.discriminator.forward(x, labels)
+        return self.discriminator.forward(x)
 
     def train(self):
         self.generator.train()
@@ -186,7 +186,7 @@ class BigGAN(nn.Module):
             )
             z = z * truncation
 
-            images = self.generator.forward(z, labels)
+            images = self.generator.forward(z)
             return images
 
     def gradient_penalty(self, real_images, fake_images, labels):
