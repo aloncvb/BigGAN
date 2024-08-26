@@ -78,7 +78,7 @@ class Generator(nn.Module):
         x = self.res2(x)
         x = self.res3(x)
         x = self.res4(x)
-        x = self.attention(x)
+        # x = self.attention(x)
         x = self.res5(x)
         x = F.leaky_relu(self.bn(x), 0.2)
 
@@ -103,7 +103,7 @@ class Discriminator(nn.Module):
 
     def forward(self, x, y):
         x = self.res1(x)
-        x = self.attention(x)
+        # x = self.attention(x)
         x = self.res2(x)
         x = self.res3(x)
         x = self.res4(x)
@@ -181,16 +181,28 @@ class BigGAN(nn.Module):
         real_output = self.discriminate(real_images, real_labels)
         fake_output = self.discriminate(fake_images, fake_labels)
 
-        real_loss = torch.mean(torch.nn.ReLU()(1.0 - real_output))
-        fake_loss = torch.mean(torch.nn.ReLU()(1.0 + fake_output))
+        # Soft labels for real and fake
+        real_labels_smooth = self.soft_labels(
+            torch.ones_like(real_output), smoothing=0.1
+        )
+        fake_labels_smooth = self.soft_labels(
+            torch.zeros_like(fake_output), smoothing=0.1
+        )
+
+        real_loss = F.binary_cross_entropy_with_logits(real_output, real_labels_smooth)
+        fake_loss = F.binary_cross_entropy_with_logits(fake_output, fake_labels_smooth)
 
         return real_loss + fake_loss
 
     def calculate_generator_loss(self, fake_images, fake_labels):
         fake_output = self.discriminate(fake_images, fake_labels)
 
-        loss_g = -torch.mean(fake_output)
-        return loss_g
+        # Use soft labels for generator as well
+        real_labels_smooth = self.soft_labels(
+            torch.ones_like(fake_output), smoothing=0.1
+        )
+
+        return F.binary_cross_entropy_with_logits(fake_output, real_labels_smooth)
 
     def generate_high_quality(self, batch_size, truncation=0.5):
         with torch.no_grad():
