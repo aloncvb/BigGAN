@@ -31,7 +31,7 @@ def train(
     scaler: GradScaler,
 ):
     gan.train()
-    max_grad_norm = 1.0
+    max_grad_norm = 5.0
     total_loss_d = 0
     total_loss_g = 0
     batch_idx = 0
