@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from bigGANVar import BigGAN
+from bigGANSimple import BigGAN
 
 
 def add_instance_noise(images, std=0.1):

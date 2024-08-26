@@ -210,7 +210,7 @@ class BigGAN(nn.Module):
             labels = torch.randint(
                 0, self.num_classes, (batch_size,), device=self.device
             )
-            z = z * truncation
+            # z = z * truncation
 
             images = self.generator.forward(z, labels)
             return images
