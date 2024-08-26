@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from bigGANSimple import BigGAN
+from bigGANVar import BigGAN
 
 
 def add_instance_noise(images, std=0.1):
@@ -278,10 +278,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--latent-dim", help="latent dimension", type=int, default=128)
     parser.add_argument(
-        "--lr-d", help="discriminator learning rate.", type=float, default=0.0002
+        "--lr-d", help="discriminator learning rate.", type=float, default=1e-5
     )
     parser.add_argument(
-        "--lr-g", help="generator learning rate.", type=float, default=0.0004
+        "--lr-g", help="generator learning rate.", type=float, default=2e-4
     )
 
     args = parser.parse_args()
