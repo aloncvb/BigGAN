@@ -44,7 +44,7 @@ def train(
         batch = add_instance_noise(batch)
         # Discriminator training
 
-        with torch.autocast(device_type=gan.device):
+        with torch.autocast(device_type="cuda"):
             optimizer_d.zero_grad()
             fake_images, fake_labels = gan.generate_fake(batch_size)
             fake_images = add_instance_noise(fake_images)
@@ -66,7 +66,7 @@ def train(
         noise_std *= 0.999
 
         # Generator training
-        with torch.autocast(device_type=gan.device):
+        with torch.autocast(device_type="cuda"):
             optimizer_g.zero_grad()
             fake_images, fake_labels = gan.generate_fake(batch_size)
             # Revert to BCE loss
