@@ -39,22 +39,23 @@ class NonLocalBlock(nn.Module):
         nn.init.constant_(self.W.weight, 0)
         nn.init.constant_(self.W.bias, 0)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x):
         batch_size, c, h, w = x.size()
 
-        g_x = self.g(x).view(batch_size, self.inter_channels, -1)
-        g_x = g_x.permute(0, 2, 1)
+        g_x = (
+            self.g(x).view(batch_size, self.inter_channels, -1).permute(0, 2, 1)
+        )  # (B, N, C')
+        theta_x = self.theta(x).view(batch_size, self.inter_channels, -1)  # (B, C', N)
+        phi_x = (
+            self.phi(x).view(batch_size, self.inter_channels, -1).permute(0, 2, 1)
+        )  # (B, N, C')
 
-        theta_x = self.theta(x).view(batch_size, self.inter_channels, -1)
-        phi_x = self.phi(x).view(batch_size, self.inter_channels, -1)
-        phi_x = phi_x.permute(0, 2, 1)
+        f = torch.matmul(theta_x, phi_x)  # (B, C', C')
+        f_div_C = F.softmax(f, dim=-1)  # (B, C', C')
 
-        f = torch.matmul(theta_x, phi_x)
-        f_div_C = F.softmax(f, dim=-1)
-
-        y = torch.matmul(f_div_C, g_x)
-        y = y.permute(0, 2, 1).contiguous()
-        y = y.view(batch_size, self.inter_channels, h, w)
+        y = torch.matmul(f_div_C, g_x)  # (B, C', N)
+        y = y.permute(0, 2, 1).contiguous()  # (B, N, C')
+        y = y.view(batch_size, self.inter_channels, h, w)  # (B, C', H, W)
         W_y = self.W(y)
         z = W_y + x
 
