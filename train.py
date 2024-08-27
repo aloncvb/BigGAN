@@ -1,6 +1,7 @@
 import os
 import argparse
-from random import randrange
+import random
+import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torchvision
@@ -133,6 +134,17 @@ def test(
 
 def main(args):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    # Set random seeds for reproducibility
+    random.seed(42)
+    np.random.seed(42)
+    torch.manual_seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(42)
+        torch.cuda.manual_seed_all(42)  # If using multi-GPU.
+
+    # Ensure deterministic behavior in PyTorch
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
     if args.dataset == "mnist":
         transform = transforms.Compose(

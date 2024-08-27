@@ -25,6 +25,42 @@ class SelfAttention(nn.Module):
         return self.gamma * out + x
 
 
+class NonLocalBlock(nn.Module):
+    def __init__(self, in_channels):
+        super(NonLocalBlock, self).__init__()
+        self.in_channels = in_channels
+        self.inter_channels = in_channels // 2
+
+        self.g = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
+        self.theta = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
+        self.phi = nn.Conv2d(in_channels, self.inter_channels, kernel_size=1)
+
+        self.W = nn.Conv2d(self.inter_channels, in_channels, kernel_size=1)
+        nn.init.constant_(self.W.weight, 0)
+        nn.init.constant_(self.W.bias, 0)
+
+    def forward(self, x: torch.Tensor):
+        batch_size, c, h, w = x.size()
+
+        g_x = self.g(x).view(batch_size, self.inter_channels, -1)
+        g_x = g_x.permute(0, 2, 1)
+
+        theta_x = self.theta(x).view(batch_size, self.inter_channels, -1)
+        phi_x = self.phi(x).view(batch_size, self.inter_channels, -1)
+        phi_x = phi_x.permute(0, 2, 1)
+
+        f = torch.matmul(theta_x, phi_x)
+        f_div_C = F.softmax(f, dim=-1)
+
+        y = torch.matmul(f_div_C, g_x)
+        y = y.permute(0, 2, 1).contiguous()
+        y = y.view(batch_size, self.inter_channels, h, w)
+        W_y = self.W(y)
+        z = W_y + x
+
+        return z
+
+
 class ResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, upsample=False):
         super(ResBlock, self).__init__()
@@ -66,6 +102,7 @@ class Generator(nn.Module):
         self.res3 = ResBlock(8 * ch, 4 * ch, upsample=True)
         self.res4 = ResBlock(4 * ch, 2 * ch, upsample=False)
         self.attention = SelfAttention(2 * ch)
+        self.non_local = NonLocalBlock(2 * ch)
         self.res5 = ResBlock(2 * ch, ch, upsample=False)
         self.bn = nn.BatchNorm2d(ch)
         self.conv_out = spectral_norm(nn.Conv2d(ch, img_channels, 3, padding=1))
@@ -79,6 +116,7 @@ class Generator(nn.Module):
         x = self.res3(x)
         x = self.res4(x)
         # x = self.attention(x)
+        x = self.non_local(x)
         x = self.res5(x)
         x = F.leaky_relu(self.bn(x), 0.2)
 
@@ -93,6 +131,7 @@ class Discriminator(nn.Module):
 
         self.res1 = ResBlock(img_channels, ch, upsample=False)
         self.attention = SelfAttention(ch)
+        self.non_local = NonLocalBlock(ch)
         self.res2 = ResBlock(ch, 2 * ch, upsample=False)
         self.res3 = ResBlock(2 * ch, 4 * ch, upsample=False)
         self.res4 = ResBlock(4 * ch, 8 * ch, upsample=False)
@@ -104,6 +143,7 @@ class Discriminator(nn.Module):
     def forward(self, x, y):
         x = self.res1(x)
         # x = self.attention(x)
+        x = self.non_local(x)
         x = self.res2(x)
         x = self.res3(x)
         x = self.res4(x)
