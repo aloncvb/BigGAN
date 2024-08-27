@@ -4,6 +4,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+from torch.cuda.amp import GradScaler
 import torchvision
 from torchvision import transforms
 from torchvision.transforms import (
@@ -15,7 +16,6 @@ from torchvision.transforms import (
 )
 from torch.utils.data import DataLoader
 from torch.optim import Adam
-from torch.cuda.amp import GradScaler, autocast
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from bigGANSimple import BigGAN
 
@@ -44,7 +44,7 @@ def train(
         batch = add_instance_noise(batch)
         # Discriminator training
 
-        with autocast():
+        with torch.autocast(device_type=gan.device):
             optimizer_d.zero_grad()
             fake_images, fake_labels = gan.generate_fake(batch_size)
             fake_images = add_instance_noise(fake_images)
@@ -66,7 +66,7 @@ def train(
         noise_std *= 0.999
 
         # Generator training
-        with autocast():
+        with torch.autocast(device_type=gan.device):
             optimizer_g.zero_grad()
             fake_images, fake_labels = gan.generate_fake(batch_size)
             # Revert to BCE loss
