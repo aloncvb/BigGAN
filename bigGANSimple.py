@@ -112,7 +112,7 @@ class Generator(nn.Module):
         self.res5 = ResBlock(2 * ch, ch, upsample=False)
         self.bn = nn.BatchNorm2d(ch)
         self.conv_out = spectral_norm(nn.Conv2d(ch, img_channels, 3, padding=1))
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.4)
 
     def forward(self, z, y):
         y_embed = self.embed(y)
@@ -125,9 +125,9 @@ class Generator(nn.Module):
         # x = self.attention(x)
         x = self.non_local(x)
         x = self.res5(x)
-        x = self.dropout(x)
         x = F.leaky_relu(self.bn(x), 0.2)
 
+        x = self.dropout(x)
         x = torch.tanh(self.conv_out(x))
         return x
 
@@ -147,6 +147,7 @@ class Discriminator(nn.Module):
         self.res6 = ResBlock(16 * ch, 16 * ch, upsample=False)
         self.linear = spectral_norm(nn.Linear(16 * ch, 1))
         self.embed = spectral_norm(nn.Embedding(num_classes, 16 * ch))
+        self.dropout = nn.Dropout(0.4)
 
     def forward(self, x, y):
         x = self.res1(x)
@@ -161,6 +162,7 @@ class Discriminator(nn.Module):
         # global sum pooling: sum over all spatial dimensions
         x = torch.sum(x, dim=[2, 3])
 
+        x = self.dropout(x)
         out = self.linear(x)
         embed = self.embed(y)
         prod = torch.sum(x * embed, dim=1, keepdim=True)
