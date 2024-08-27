@@ -147,7 +147,7 @@ class Discriminator(nn.Module):
         self.res6 = ResBlock(16 * ch, 16 * ch, upsample=False)
         self.linear = spectral_norm(nn.Linear(16 * ch, 1))
         self.embed = spectral_norm(nn.Embedding(num_classes, 16 * ch))
-        self.dropout = nn.Dropout(0.2)
+        self.dropout = nn.Dropout(0.1)
 
     def forward(self, x, y):
         x = self.res1(x)
