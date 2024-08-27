@@ -42,20 +42,25 @@ class NonLocalBlock(nn.Module):
     def forward(self, x):
         batch_size, c, h, w = x.size()
 
-        g_x = (
-            self.g(x).view(batch_size, self.inter_channels, -1).permute(0, 2, 1)
-        )  # (B, N, C')
+        # Theta operation
         theta_x = self.theta(x).view(batch_size, self.inter_channels, -1)  # (B, C', N)
-        phi_x = (
-            self.phi(x).view(batch_size, self.inter_channels, -1).permute(0, 2, 1)
-        )  # (B, N, C')
+        theta_x = theta_x.permute(0, 2, 1)  # (B, N, C')
 
-        f = torch.matmul(theta_x, phi_x)  # (B, C', C')
-        f_div_C = F.softmax(f, dim=-1)  # (B, C', C')
+        # Phi operation
+        phi_x = self.phi(x).view(batch_size, self.inter_channels, -1)  # (B, C', N)
 
-        y = torch.matmul(f_div_C, g_x)  # (B, C', N)
-        y = y.permute(0, 2, 1).contiguous()  # (B, N, C')
+        # Calculate attention map
+        f = torch.matmul(theta_x, phi_x)  # (B, N, N)
+        f_div_C = F.softmax(f, dim=-1)  # (B, N, N)
+
+        # G operation
+        g_x = self.g(x).view(batch_size, self.inter_channels, -1)  # (B, C', N)
+
+        # Apply attention map to g_x
+        y = torch.matmul(f_div_C, g_x.permute(0, 2, 1))  # (B, N, C')
+        y = y.permute(0, 2, 1).contiguous()  # (B, C', N)
         y = y.view(batch_size, self.inter_channels, h, w)  # (B, C', H, W)
+
         W_y = self.W(y)
         z = W_y + x
 
