@@ -112,7 +112,7 @@ class Generator(nn.Module):
         self.res5 = ResBlock(2 * ch, ch, upsample=False)
         self.bn = nn.BatchNorm2d(ch)
         self.conv_out = spectral_norm(nn.Conv2d(ch, img_channels, 3, padding=1))
-        self.dropout = nn.Dropout(0.3)
+        self.dropout = nn.Dropout(0.5)
 
     def forward(self, z, y):
         y_embed = self.embed(y)
