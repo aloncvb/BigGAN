@@ -211,10 +211,15 @@ def main(args):
     biggan = BigGAN(
         latent_dim=args.latent_dim,
         num_classes=10,
-        # img_size=32,
         img_channels=1 if args.dataset == "mnist" else 3,
         device=device,
     )
+
+    if args.load:
+        biggan.generator.load_state_dict(torch.load("generator.pt"))
+        biggan.discriminator.load_state_dict(torch.load("discriminator.pt"))
+        print("loaded model")
+
     optimizer_d = Adam(
         biggan.discriminator.parameters(),
         lr=args.lr_d,
@@ -294,6 +299,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--lr-g", help="generator learning rate.", type=float, default=2e-4
+    )
+    parser.add_argument(
+        "--load", help="load generator and discriminator", type=bool, default=False
     )
 
     args = parser.parse_args()
