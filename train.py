@@ -216,9 +216,12 @@ def main(args):
     )
 
     if args.load:
-        biggan.generator.load_state_dict(torch.load("generator.pt"))
-        biggan.discriminator.load_state_dict(torch.load("discriminator.pt"))
-        print("loaded model")
+        if os.path.exists("generator.pt") and os.path.exists("discriminator.pt"):
+            biggan.generator.load_state_dict(torch.load("generator.pt"))
+            biggan.discriminator.load_state_dict(torch.load("discriminator.pt"))
+            print("loaded model")
+        else:
+            print("No model to load")
 
     optimizer_d = Adam(
         biggan.discriminator.parameters(),
