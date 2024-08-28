@@ -268,6 +268,18 @@ def main(args):
             # Save the model
             torch.save(biggan.generator.state_dict(), "generator.pt")
             torch.save(biggan.discriminator.state_dict(), "discriminator.pt")
+            torch.save(
+                {
+                    "generator_state_dict": biggan.generator.state_dict(),
+                    "discriminator_state_dict": biggan.discriminator.state_dict(),
+                    "optimizer_g_state_dict": optimizer_g.state_dict(),
+                    "optimizer_d_state_dict": optimizer_d.state_dict(),
+                    "scheduler_g_state_dict": scheduler_g.state_dict(),
+                    "scheduler_d_state_dict": scheduler_d.state_dict(),
+                },
+                "checkpoint.pt",
+            )
+
             # create a plot of the loss
             plt.plot(loss_train_arr_d, label="train_d")
             plt.plot(loss_test_arr_d, label="test_d")
