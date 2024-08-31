@@ -1,33 +1,27 @@
+import os
 import torch
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 from torch.utils.data import DataLoader
-from scipy.linalg import sqrtm
-import numpy as np
-from bigGANSimple import BigGAN
+from torchvision.utils import save_image
+from pytorch_fid.fid_score import calculate_fid_given_paths
 
-from inception import get_inception_model
-
-
-def calculate_fid(mu1, sigma1, mu2, sigma2):
-    covmean, _ = sqrtm(sigma1 @ sigma2, disp=False)
-    if np.iscomplexobj(covmean):
-        covmean = covmean.real
-
-    diff = mu1 - mu2
-    fid = diff.dot(diff) + np.trace(sigma1 + sigma2 - 2 * covmean)
-    return fid
+from bigGANSimple import BigGAN  # Assuming your model is defined here
 
 
-def compute_statistics(images, inception, device):
-    with torch.no_grad():
-        activations = inception(images.to(device))
-    mu = np.mean(activations, axis=0)
-    sigma = np.cov(activations, rowvar=False)
-    return mu, sigma
+def save_images(
+    dataset_name,
+    generator,
+    num_images,
+    latent_dim,
+    num_classes,
+    batch_size,
+    device,
+):
+    if not os.path.exists("real"):
+        os.makedirs("real")
+        os.makedirs("fake")
 
-
-def get_dataloader(dataset_name, batch_size=128):
     if dataset_name == "mnist":
         transform = transforms.Compose(
             [
@@ -55,71 +49,91 @@ def get_dataloader(dataset_name, batch_size=128):
         raise ValueError("Dataset not supported: choose 'mnist' or 'cifar'")
 
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=2)
-    return dataloader
+
+    # Save real images
+    for i, (real_images, _) in enumerate(dataloader):
+        if i * batch_size >= num_images:
+            break
+        for j in range(real_images.size(0)):
+            save_image(
+                real_images[j],
+                os.path.join("real", f"real_{i * batch_size + j}.png"),
+            )
+
+    # Save fake images
+    generator.eval()
+    with torch.no_grad():
+        for i in range(num_images // batch_size):
+            z = torch.randn(batch_size, latent_dim, device=device)
+            labels = torch.randint(0, num_classes, (batch_size,), device=device)
+            fake_images = generator(z, labels).cpu()
+            for j in range(fake_images.size(0)):
+                save_image(
+                    fake_images[j],
+                    os.path.join("fake", f"fake_{i * batch_size + j}.png"),
+                )
 
 
-def load_generator(dataset_name, device, latent_dim, num_classes):
-    # Modify this depending on how your generator is defined
+def main(
+    generator_path,
+    dataset_name,
+    latent_dim=128,
+    num_classes=10,
+    num_images=10000,
+    batch_size=128,
+    device="cuda:0",
+):
+    device = torch.device(device if torch.cuda.is_available() else "cpu")
+
+    # Load the generator
     biggan = BigGAN(
         latent_dim=latent_dim,
         num_classes=num_classes,
         img_channels=1 if dataset_name == "mnist" else 3,
         device=device,
     )
-    # if generator path has checkpoint inside , load cifar else load mnist:
-    if dataset_name == "cifar":
-        checkpoint = torch.load("checkpoint_cifar.pt", map_location=device)
-        biggan.generator.load_state_dict(checkpoint["generator_state_dict"])
-        print("Loaded generator for cifar")
-    else:
+    if os.path.exists("checkpoint.pt"):
         checkpoint = torch.load("checkpoint.pt", map_location=device)
         biggan.generator.load_state_dict(checkpoint["generator_state_dict"])
-        print("Loaded generator for mnist")
+        print("loaded model")
+    biggan.generator.load_state_dict(torch.load(generator_path, map_location=device))
+    biggan.to(device)
 
-    biggan.eval()
-    return biggan.generator
-
-
-def generate_images(generator, num_images, latent_dim, num_classes, device):
-    z = torch.randn(num_images, latent_dim, device=device)
-    labels = torch.randint(0, num_classes, (num_images,), device=device)
-    with torch.no_grad():
-        generated_images = generator(z, labels).cpu()
-    return generated_images
-
-
-def main(
-    dataset_name,
-    latent_dim=128,
-    num_classes=10,
-    num_images=10000,
-    batch_size=128,
-):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    generator = load_generator(dataset_name, device, latent_dim, num_classes)
-
-    dataloader = get_dataloader(dataset_name, batch_size)
-
-    inception = get_inception_model().to(device)
-
-    generated_images = generate_images(
-        generator, num_images, latent_dim, num_classes, device
+    print("CREATING IMAGES")
+    # Save real and fake images
+    save_images(
+        dataset_name,
+        biggan.generator,
+        num_images,
+        latent_dim,
+        num_classes,
+        batch_size,
+        device,
     )
 
-    real_images = next(iter(dataloader))[0][:num_images]
-    mu_real, sigma_real = compute_statistics(real_images, inception, device)
+    paths = [os.path.join("real"), os.path.join("fake")]
 
-    mu_gen, sigma_gen = compute_statistics(generated_images, inception, device)
+    # Calculate FID Score over all dataset
+    print("Calculating FID Score")
+    fid_value = calculate_fid_given_paths(
+        paths, batch_size=256, device=device, dims=2048
+    )
 
-    fid_score = calculate_fid(mu_real, sigma_real, mu_gen, sigma_gen)
-    print(f"FID score for {dataset_name}: {fid_score}")
+    print(f"FID Score: {fid_value}")
 
 
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Calculate FID for a GAN generator.")
+    parser = argparse.ArgumentParser(
+        description="Generate and save real and fake images for FID calculation."
+    )
+    parser.add_argument(
+        "--generator_path",
+        type=str,
+        default="checkpoint.pt",
+        help="Path to the generator model.",
+    )
     parser.add_argument(
         "--dataset_name",
         type=str,
@@ -134,20 +148,25 @@ if __name__ == "__main__":
         "--num_classes", type=int, default=10, help="Number of classes in the dataset."
     )
     parser.add_argument(
-        "--num_images",
-        type=int,
-        default=10000,
-        help="Number of images to generate for FID calculation.",
+        "--num_images", type=int, default=10000, help="Number of images to generate."
     )
     parser.add_argument(
         "--batch_size", type=int, default=128, help="Batch size for data loading."
     )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda:0",
+        help="Device to use for generating images.",
+    )
 
     args = parser.parse_args()
     main(
+        args.generator_path,
         args.dataset_name,
         args.latent_dim,
         args.num_classes,
         args.num_images,
         args.batch_size,
+        args.device,
     )
