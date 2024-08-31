@@ -69,14 +69,13 @@ def load_generator(dataset_name, device, latent_dim, num_classes):
         device=device,
     )
     # if generator path has checkpoint inside , load cifar else load mnist:
-    if "dataset_name" == "cifar":
-        checkpoint = torch.load("checkpoint.pt", map_location=device)
+    if dataset_name == "cifar":
+        checkpoint = torch.load("checkpoint_cifar.pt", map_location=device)
         biggan.generator.load_state_dict(checkpoint["generator_state_dict"])
         print("Loaded generator for cifar")
     else:
-        biggan.generator.load_state_dict(
-            torch.load("generator.pt", map_location=device)
-        )
+        checkpoint = torch.load("checkpoint.pt", map_location=device)
+        biggan.generator.load_state_dict(checkpoint["generator_state_dict"])
         print("Loaded generator for mnist")
 
     biggan.eval()
