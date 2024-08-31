@@ -20,9 +20,8 @@ def calculate_fid(mu1, sigma1, mu2, sigma2):
 
 
 def compute_statistics(images, inception, device):
-    inception.eval()
     with torch.no_grad():
-        activations = inception(images.to(device)).cpu().numpy()
+        activations = inception(images.to(device))
     mu = np.mean(activations, axis=0)
     sigma = np.cov(activations, rowvar=False)
     return mu, sigma
