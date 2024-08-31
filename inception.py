@@ -13,11 +13,9 @@ class InceptionV3(nn.Module):
         self.device = device
 
     def forward(self, x):
-        # Ensure input size is (N, 3, 299, 299) as expected by InceptionV3
-        if x.size(1) != 3 or x.size(2) != 299 or x.size(3) != 299:
-            x = F.interpolate(x, size=(299, 299), mode="bilinear", align_corners=False)
-        else:
-            print(x.size())
+        print(x.size())
+        x = F.interpolate(x, size=(299, 299), mode="bilinear", align_corners=False)
+        print(x.size())
         x = self.inception(x)
-        x = x.view(x.size(0), -1)  # Flatten the output
+        x = x.view(x.size(0), -1)
         return x
