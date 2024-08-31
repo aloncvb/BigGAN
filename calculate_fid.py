@@ -6,7 +6,7 @@ from scipy.linalg import sqrtm
 import numpy as np
 from bigGANSimple import BigGAN
 
-from inception import InceptionV3
+from inception import get_inception_model
 
 
 def calculate_fid(mu1, sigma1, mu2, sigma2):
@@ -102,7 +102,7 @@ def main(
 
     dataloader = get_dataloader(dataset_name, batch_size)
 
-    inception = InceptionV3(device=device)
+    inception = get_inception_model().to(device)
 
     generated_images = generate_images(
         generator, num_images, latent_dim, num_classes, device
