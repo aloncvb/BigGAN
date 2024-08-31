@@ -92,11 +92,15 @@ def main(
         img_channels=1 if dataset_name == "mnist" else 3,
         device=device,
     )
-    if os.path.exists("checkpoint.pt"):
+    if dataset_name == "mnist":
         checkpoint = torch.load("checkpoint.pt", map_location=device)
         biggan.generator.load_state_dict(checkpoint["generator_state_dict"])
+        print("loaded mnist model")
+    else:
+        checkpoint = torch.load("checkpoint_cifar.pt", map_location=device)
+        biggan.generator.load_state_dict(checkpoint["generator_state_dict"])
         print("loaded model")
-    biggan.generator.load_state_dict(torch.load(generator_path, map_location=device))
+
     biggan.to(device)
 
     print("CREATING IMAGES")
