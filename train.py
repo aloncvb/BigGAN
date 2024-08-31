@@ -215,14 +215,6 @@ def main(args):
         device=device,
     )
 
-    if args.load:
-        if os.path.exists("generator.pt") and os.path.exists("discriminator.pt"):
-            biggan.generator.load_state_dict(torch.load("generator.pt"))
-            biggan.discriminator.load_state_dict(torch.load("discriminator.pt"))
-            print("loaded model")
-        else:
-            print("No model to load")
-
     optimizer_d = Adam(
         biggan.discriminator.parameters(),
         lr=args.lr_d,
@@ -232,6 +224,18 @@ def main(args):
     optimizer_g = Adam(
         biggan.generator.parameters(), lr=args.lr_g, betas=(0.0, 0.9), weight_decay=1e-5
     )
+
+    if args.load:
+        if os.path.exists("checkpoint.pt"):
+            checkpoint = torch.load("checkpoint.pt", map_location=device)
+            biggan.generator.load_state_dict(checkpoint["generator_state_dict"])
+            biggan.discriminator.load_state_dict(checkpoint["discriminator_state_dict"])
+            optimizer_g.load_state_dict(checkpoint["optimizer_g_state_dict"])
+            optimizer_d.load_state_dict(checkpoint["optimizer_d_state_dict"])
+            print("loaded model")
+        else:
+            print("No model to load")
+
     scheduler_d = CosineAnnealingLR(optimizer_d, T_max=args.epochs)
     scheduler_g = CosineAnnealingLR(optimizer_g, T_max=args.epochs)
     scaler = GradScaler()
