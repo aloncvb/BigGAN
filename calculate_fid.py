@@ -65,7 +65,7 @@ def load_generator(dataset_name, device, latent_dim, num_classes):
     biggan = BigGAN(
         latent_dim=latent_dim,
         num_classes=num_classes,
-        img_channels=1 if num_classes == 10 else 3,
+        img_channels=1 if dataset_name == "mnist" else 3,
         device=device,
     )
     # if generator path has checkpoint inside , load cifar else load mnist:
