@@ -3,9 +3,9 @@ import torchvision.models as models
 import torch.nn.functional as F
 
 
-class InceptionV3FeatureExtractor(nn.Module):
+class InceptionV3(nn.Module):
     def __init__(self, device="cpu"):
-        super(InceptionV3FeatureExtractor, self).__init__()
+        super(InceptionV3, self).__init__()
         self.inception = models.inception_v3(pretrained=True, transform_input=False)
         # We only need the layers up to the last pooling layer (before the final classifier)
         self.inception = nn.Sequential(*list(self.inception.children())[:-1])
