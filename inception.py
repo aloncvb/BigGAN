@@ -13,9 +13,8 @@ class InceptionV3(nn.Module):
         self.device = device
 
     def forward(self, x):
-        print(x.size())
         x = F.interpolate(x, size=(299, 299), mode="bilinear", align_corners=False)
-        print(x.size())
+        print(x.size())  # torch.Size([128, 3, 299, 299])
         x = self.inception(x)
         x = x.view(x.size(0), -1)
         return x
