@@ -231,10 +231,10 @@ class BigGAN(nn.Module):
 
         # Soft labels for real and fake
         real_labels_smooth = self.soft_labels(
-            torch.ones_like(real_output), smoothing=0.1
+            torch.ones_like(real_output), smoothing=0.01
         )
         fake_labels_smooth = self.soft_labels(
-            torch.zeros_like(fake_output), smoothing=0.1
+            torch.zeros_like(fake_output), smoothing=0.01
         )
 
         real_loss = F.binary_cross_entropy_with_logits(real_output, real_labels_smooth)
@@ -247,7 +247,7 @@ class BigGAN(nn.Module):
 
         # Use soft labels for generator as well
         real_labels_smooth = self.soft_labels(
-            torch.ones_like(fake_output), smoothing=0.1
+            torch.ones_like(fake_output), smoothing=0.01
         )
 
         return F.binary_cross_entropy_with_logits(fake_output, real_labels_smooth)
