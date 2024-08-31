@@ -4,27 +4,6 @@ import torch.nn.functional as F
 from torch.nn.utils import spectral_norm
 
 
-# used as a non-local block as described in the paper
-class SelfAttention(nn.Module):
-    def __init__(self, in_dim):
-        super(SelfAttention, self).__init__()
-        self.query_conv = nn.Conv2d(in_dim, in_dim // 8, 1)
-        self.key_conv = nn.Conv2d(in_dim, in_dim // 8, 1)
-        self.value_conv = nn.Conv2d(in_dim, in_dim, 1)
-        self.gamma = nn.Parameter(torch.zeros(1))
-
-    def forward(self, x):
-        batch_size, C, W, H = x.size()
-        query = self.query_conv(x).view(batch_size, -1, W * H).permute(0, 2, 1)
-        key = self.key_conv(x).view(batch_size, -1, W * H)
-        energy = torch.bmm(query, key)
-        attention = F.softmax(energy, dim=-1)
-        value = self.value_conv(x).view(batch_size, -1, W * H)
-        out = torch.bmm(value, attention.permute(0, 2, 1))
-        out = out.view(batch_size, C, W, H)
-        return self.gamma * out + x
-
-
 class NonLocalBlock(nn.Module):
     def __init__(self, in_channels):
         super(NonLocalBlock, self).__init__()
@@ -107,7 +86,6 @@ class Generator(nn.Module):
         self.res2 = ResBlock(16 * ch, 8 * ch, upsample=True)
         self.res3 = ResBlock(8 * ch, 4 * ch, upsample=True)
         self.res4 = ResBlock(4 * ch, 2 * ch, upsample=False)
-        self.attention = SelfAttention(2 * ch)
         self.non_local = NonLocalBlock(2 * ch)
         self.res5 = ResBlock(2 * ch, ch, upsample=False)
         self.bn = nn.BatchNorm2d(ch)
@@ -122,7 +100,6 @@ class Generator(nn.Module):
         x = self.res2(x)
         x = self.res3(x)
         x = self.res4(x)
-        # x = self.attention(x)
         x = self.non_local(x)
         x = self.res5(x)
         x = self.dropout(x)
@@ -138,7 +115,6 @@ class Discriminator(nn.Module):
         self.num_classes = num_classes
 
         self.res1 = ResBlock(img_channels, ch, upsample=False)
-        self.attention = SelfAttention(ch)
         self.non_local = NonLocalBlock(ch)
         self.res2 = ResBlock(ch, 2 * ch, upsample=False)
         self.res3 = ResBlock(2 * ch, 4 * ch, upsample=False)
@@ -150,7 +126,6 @@ class Discriminator(nn.Module):
 
     def forward(self, x, y):
         x = self.res1(x)
-        # x = self.attention(x)
         x = self.non_local(x)
         x = self.res2(x)
         x = self.res3(x)
